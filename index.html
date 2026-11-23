@@ -266,8 +266,9 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
 
 <dialog id="setDlg"><div class="sheet">
   <h3>الإعدادات</h3>
-  <div class="row"><label for="sEng">محرك القراءة<small>Dynamsoft أقوى بالضوء الضعيف والوصولات المطوية</small></label><select id="sEng"><option value="auto">تلقائي (Dynamsoft أولاً)</option><option value="dynamsoft">Dynamsoft</option><option value="native">محرك الموبايل</option><option value="zxing">ZXing</option></select></div>
+  <div class="row"><label for="sEng">محرك القراءة<small>Dynamsoft أقوى بالضوء الضعيف والوصولات المطوية</small></label><select id="sEng"><option value="auto">تلقائي (الأسرع بجهازك)</option><option value="dynamsoft">Dynamsoft</option><option value="native">محرك الموبايل</option><option value="zxing">ZXing</option></select></div>
   <div class="row" style="flex-wrap:wrap"><label for="sKey">مفتاح Dynamsoft<small>فارغ = ترخيص الفهود المثبّت. لمفتاح جديد اطلبه من <a href="https://www.dynamsoft.com/customer/license/trialLicense?product=dbr&package=js" target="_blank" rel="noopener" style="color:var(--orange)">صفحة Dynamsoft</a></small></label><input type="text" id="sKey" dir="ltr" placeholder="DLS2…" style="width:100%"></div>
+  <div class="row"><label for="sFmt">أنواع الباركود<small>«QR فقط» أسرع بكثير، ووصولات جني كلها QR</small></label><select id="sFmt"><option value="fast">QR + Code128 (أسرع)</option><option value="all">كل الأنواع</option></select></div>
   <div class="row"><label for="sMode">وضع Dynamsoft<small>«أقصى دقة» يقرأ الوصولات التالفة والبعيدة، أبطأ شوية</small></label><select id="sMode"><option value="ReadBarcodes_SpeedFirst">أقصى سرعة</option><option value="ReadBarcodes_Balance">متوازن</option><option value="ReadBarcodes_ReadRateFirst">أقصى دقة</option><option value="ReadDistantBarcodes">باركود بعيد</option><option value="ReadDenseBarcodes">باركود صغير وكثيف</option></select></div>
   <div class="row"><label for="sBeep">الصوت</label><input type="checkbox" id="sBeep"></div>
   <div class="row"><label for="sVib">الاهتزاز</label><input type="checkbox" id="sVib"></div>
@@ -292,7 +293,7 @@ const fmtDate = t => { const d = new Date(t); return d.getFullYear() + "-" + pad
 const nf = n => n.toLocaleString("en-US");
 
 /* ---------- settings (per-device convenience) ---------- */
-const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 2, res: "720", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst" };
+const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 2, res: "720", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst", fmt: "fast" };
 const DYN_URL = "https://cdn.jsdelivr.net/npm/dynamsoft-barcode-reader-bundle@11.6.3200/dist/dbr.bundle.js";
 const DYN_COMPANY_KEY = "DLS2eyJoYW5kc2hha2VDb2RlIjoiMTA2NjQwNTc3LU1UQTJOalF3TlRjM0xYZGxZaTFVY21saGJGQnliMm8iLCJtYWluU2VydmVyVVJMIjoiaHR0cHM6Ly9tZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwib3JnYW5pemF0aW9uSUQiOiIxMDY2NDA1NzciLCJzdGFuZGJ5U2VydmVyVVJMIjoiaHR0cHM6Ly9zZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwiY2hlY2tDb2RlIjoxNDQ3MzMwNzY0fQ==";   // Al-Fuhood 30-day trial (2026-11-23)
 const DYN_TEST_KEY = DYN_COMPANY_KEY;
@@ -437,7 +438,7 @@ function accept(raw, src, ms) {
   lookupLater(rec);
 }
 const srcLabel = s => s === "cam" ? "" : s === "hw" ? " · قارئ" : s === "photo" ? " · صورة" : " · يدوي";
-function dblOn() { return S.dbl === null ? engine === "zxing" : !!S.dbl; }
+function dblOn() { return S.dbl === null ? (engine === "zxing" && S.fmt === "all") : !!S.dbl; }
 
 /* ---------- order sheet (Jenni export) : indexed lookup ---------- */
 function findOrder(code) {
@@ -645,29 +646,58 @@ async function initDyn() {
   if (t && t.errorCode && /licen/i.test(t.errorString || "")) throw new Error(t.errorString);
   return r;
 }
-async function pickEngine() {
-  const inClaude = !!(window.claude && window.claude.use);   // Claude pages block Dynamsoft's license server
-  if (S.eng === "dynamsoft" || (S.eng === "auto" && !inClaude)) {
-    try {
-      $("startMsg").textContent = "جاري تحميل محرك Dynamsoft…";
-      dyn = await withTimeout(initDyn(), 15000);
-      engine = "dynamsoft"; $("engine").textContent = "Dynamsoft" + (S.dynKey ? " · مفتاح مخصص" : " · ترخيص الفهود"); warn(""); return;
-    } catch (e) {
-      dyn = null; dynLoaded = null; clearDynMask();
-      warn("محرك Dynamsoft ما اشتغل" + (e && /licen/i.test(e.message || "") ? " (المفتاح منتهي أو غلط)" : "") + "، القارئ شغّال على المحرك البديل.");
+const FAST = S => S.fmt !== "all";   // Jenni labels carry a QR; reading only QR + Code128 is much faster
+async function tuneDyn(r) {
+  try {
+    const F = window.Dynamsoft.DBR.EnumBarcodeFormat;
+    const fm = FAST(S) ? (F.BF_QR_CODE | F.BF_CODE_128) : F.BF_ALL;
+    for (const t of [S.dynMode, "ReadBarcodes_ReadRateFirst"]) {
+      const st = await r.getSimplifiedSettings(t);
+      st.barcodeSettings.barcodeFormatIds = fm;
+      st.barcodeSettings.expectedBarcodesCount = 1;
+      if (S.dynMode === "ReadBarcodes_SpeedFirst" && t === S.dynMode) st.barcodeSettings.scaleDownThreshold = 720;
+      await r.updateSettings(t, st);
     }
+  } catch (e) {}
+}
+async function useNative() {
+  if (!("BarcodeDetector" in window)) return false;
+  try {
+    const want = FAST(S) ? ["qr_code", "code_128"] : ["code_128", "code_39", "code_93", "codabar", "ean_13", "ean_8", "itf", "upc_a", "upc_e", "qr_code", "data_matrix", "pdf417"];
+    const have = await BarcodeDetector.getSupportedFormats();
+    const fm = want.filter(f => have.includes(f));
+    if (!fm.includes("qr_code") && FAST(S)) return false;
+    if (!fm.length) return false;
+    detector = new BarcodeDetector({ formats: fm }); engine = "native";
+    $("engine").textContent = "محرك الموبايل (Google) · " + (FAST(S) ? "QR سريع" : fm.length + " أنواع"); return true;
+  } catch (e) { return false; }
+}
+async function useDyn() {
+  const inClaude = !!(window.claude && window.claude.use);   // Claude pages block Dynamsoft's license server
+  if (inClaude && S.eng !== "dynamsoft") return false;
+  try {
+    $("startMsg").textContent = "جاري تحميل محرك Dynamsoft…";
+    dyn = await withTimeout(dynReady || (dynReady = initDyn()), 15000);
+    await tuneDyn(dyn);
+    engine = "dynamsoft"; $("engine").textContent = "Dynamsoft" + (S.dynKey ? " · مفتاح مخصص" : " · ترخيص الفهود"); warn(""); return true;
+  } catch (e) {
+    dyn = null; dynLoaded = null; dynReady = null; clearDynMask();
+    warn("محرك Dynamsoft ما اشتغل" + (e && /licen/i.test(e.message || "") ? " (المفتاح منتهي أو غلط)" : "") + "، القارئ شغّال على المحرك البديل.");
+    return false;
   }
-  if (S.eng !== "zxing" && "BarcodeDetector" in window) {
-    try {
-      const want = ["code_128", "code_39", "code_93", "codabar", "ean_13", "ean_8", "itf", "upc_a", "upc_e", "qr_code", "data_matrix", "pdf417"];
-      const have = await BarcodeDetector.getSupportedFormats();
-      const fm = want.filter(f => have.includes(f));
-      if (fm.length) { detector = new BarcodeDetector({ formats: fm }); engine = "native"; $("engine").textContent = "Native · " + fm.length + " formats"; return; }
-    } catch (e) {}
-  }
+}
+// auto: the phone's own engine first (Google ML Kit on Android, instant start), Dynamsoft where there is none (iPhone), ZXing last
+let picking = null;
+function pickEngine() { return picking || (picking = pickEngine0().finally(() => { picking = null; })); }
+async function pickEngine0() {
+  if (S.eng === "native" && await useNative()) return;
+  if (S.eng === "dynamsoft" && await useDyn()) return;
+  if (S.eng === "auto" && (await useNative() || await useDyn())) return;
+  if (S.eng !== "zxing" && S.eng !== "auto" && await useNative()) return;
   await zxReady();
   engine = "zxing"; $("engine").textContent = "ZXing";
 }
+let dynReady = null;
 function clearDynMask() {  // Dynamsoft covers the page with a license notice when the key fails; our fallback keeps working, so remove it
   const kill = () => document.querySelectorAll('[class*="dls-license"]').forEach(e => e.remove());
   kill(); let n = 0; const iv = setInterval(() => { kill(); if (++n > 40) clearInterval(iv); }, 250);
@@ -685,7 +715,7 @@ function zxReady() {
       const Z = window.ZXing;
       const hints = new Map();
       const F = Z.BarcodeFormat;
-      hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [F.CODE_128, F.CODE_39, F.CODE_93, F.CODABAR, F.EAN_13, F.EAN_8, F.ITF, F.UPC_A, F.UPC_E, F.QR_CODE, F.DATA_MATRIX]);
+      hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, FAST(S) ? [F.QR_CODE, F.CODE_128] : [F.CODE_128, F.CODE_39, F.CODE_93, F.CODABAR, F.EAN_13, F.EAN_8, F.ITF, F.UPC_A, F.UPC_E, F.QR_CODE, F.DATA_MATRIX]);
       zx = { Z, reader: new Z.MultiFormatReader(), hints, flip: 0 };
       zx.reader.setHints(hints);
       res();
@@ -919,12 +949,13 @@ $("sessBtn").addEventListener("click", () => { renderSessions(); $("sessDlg").sh
 $("newSessBtn").addEventListener("click", () => { setSession(newSession()); $("sessDlg").close(); toast("بدأت دفعة جديدة"); });
 
 $("setBtn").addEventListener("click", () => {
-  $("sMode").value = S.dynMode; $("sEng").value = S.eng; $("sKey").value = S.dynKey; $("sBeep").checked = S.beep; $("sVib").checked = S.vib; $("sMin").value = S.min; $("sPat").value = S.pat;
+  $("sFmt").value = S.fmt; $("sMode").value = S.dynMode; $("sEng").value = S.eng; $("sKey").value = S.dynKey; $("sBeep").checked = S.beep; $("sVib").checked = S.vib; $("sMin").value = S.min; $("sPat").value = S.pat;
   $("sDbl").checked = dblOn(); $("sCool").value = S.cool; $("sRes").value = S.res;
   $("setDlg").showModal();
 });
-const reEngine = async () => { engine = "–"; dyn = null; if (running) { stopCam(); await startCam(); } };
-$("sMode").onchange = e => { S.dynMode = e.target.value; saveS(); };
+const reEngine = async () => { engine = "–"; dyn = null; detector = null; if (running) { stopCam(); await startCam(); } };
+$("sMode").onchange = e => { S.dynMode = e.target.value; saveS(); if (dyn) tuneDyn(dyn); };
+$("sFmt").onchange = e => { S.fmt = e.target.value; saveS(); zx = null; reEngine(); };
 $("sEng").onchange = e => { S.eng = e.target.value; saveS(); reEngine(); };
 $("sKey").onchange = e => { S.dynKey = e.target.value.trim(); saveS(); dynLoaded = null; reEngine(); };
 $("sBeep").onchange = e => { S.beep = e.target.checked; saveS(); if (S.beep) { audio(); feedback("ok"); } };
@@ -964,8 +995,10 @@ $("wipeBtn").addEventListener("click", async e => {
   let id = null; try { id = localStorage.getItem("fh.cur"); } catch (e) {}
   const s = sessions.find(x => x.id === id) || sessions[0] || newSession();
   setSession(s); catStatus();
+  // warm the scan engine up before the first tap, so scanning starts instantly
+  setTimeout(() => { if (engine === "–" && !running) pickEngine().then(() => { if (!running) $("startMsg").textContent = "وجّه الكاميرا على باركود الوصل. المسح متواصل بدون ضغط، وكل قراءة تطلع بصوت واهتزاز."; }).catch(() => {}); }, 300);
   try { if (localStorage.getItem("fh.full")) $("fullBtn").classList.add("on"), $("cam").dataset.wantFull = "1"; } catch (e) {}
-  $("engine").textContent = (S.eng === "zxing" ? "ZXing" : S.eng === "native" ? "Native" : "Dynamsoft") + " · تحميل " + nf(index.size) + " سجل بـ " + Math.round(performance.now() - t0) + "ms";
+  if (engine === "–") $("engine").textContent = "يجهز…";
   if (!isSecureContext) warn("الكاميرا تحتاج رابط https.");
 })();
 })();
