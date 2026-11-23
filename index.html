@@ -260,7 +260,7 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
     <button class="act" id="setBtn">الإعدادات</button>
   </div>
   <input type="file" id="catInput" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
-  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v13</span></p>
+  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v14</span></p>
 </div>
 
 <dialog id="sessDlg"><div class="sheet">
@@ -275,7 +275,7 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
   <div class="row"><label for="sEng">محرك القراءة<small>Dynamsoft أقوى بالضوء الضعيف والوصولات المطوية</small></label><select id="sEng"><option value="auto">تلقائي (الأسرع بجهازك)</option><option value="scandit">Scandit</option><option value="dynamsoft">Dynamsoft</option><option value="native">محرك الموبايل</option><option value="zxing">ZXing</option></select></div>
   <div class="row" style="flex-wrap:wrap"><label for="sKey">مفتاح Dynamsoft<small>فارغ = ترخيص الفهود المثبّت. لمفتاح جديد اطلبه من <a href="https://www.dynamsoft.com/customer/license/trialLicense?product=dbr&package=js" target="_blank" rel="noopener" style="color:var(--orange)">صفحة Dynamsoft</a></small></label><input type="text" id="sKey" dir="ltr" placeholder="DLS2…" style="width:100%"></div>
   <div class="row"><label for="sFmt">أنواع الباركود<small>«QR فقط» أسرع بكثير، ووصولات جني كلها QR</small></label><select id="sFmt"><option value="fast">QR + Code128 (أسرع)</option><option value="all">كل الأنواع</option></select></div>
-  <div class="row" style="flex-wrap:wrap"><label for="sScKey">مفتاح Scandit<small>فارغ = مفتاح الفهود المثبّت. المفتاح لازم يكون مسجل عليه الدومين fdaammohammed-wq.github.io</small></label><input type="text" id="sScKey" dir="ltr" placeholder="License key" style="width:100%"></div>
+  <div class="row" style="flex-wrap:wrap"><label for="sScKey">مفتاح Scandit<small>اتركها فارغة. مفتاح الفهود مثبّت بالقارئ. تستخدمها بس إذا عندك مفتاح جديد (نص طويل جداً)</small></label><input type="text" id="sScKey" dir="ltr" placeholder="License key" style="width:100%"></div>
   <div class="row"><label for="sMode">وضع Dynamsoft<small>«أقصى دقة» يقرأ الوصولات التالفة والبعيدة، أبطأ شوية</small></label><select id="sMode"><option value="ReadBarcodes_SpeedFirst">أقصى سرعة</option><option value="ReadBarcodes_Balance">متوازن</option><option value="ReadBarcodes_ReadRateFirst">أقصى دقة</option><option value="ReadDistantBarcodes">باركود بعيد</option><option value="ReadDenseBarcodes">باركود صغير وكثيف</option></select></div>
   <div class="row"><label for="sAuto">وضع الليل التلقائي<small>يشغّل الضوء وحده بالظلام ويقوّي وضوح الصورة</small></label><input type="checkbox" id="sAuto"></div>
   <div class="row"><label for="sBeep">الصوت</label><input type="checkbox" id="sBeep"></div>
