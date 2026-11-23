@@ -249,7 +249,7 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
 <dialog id="setDlg"><div class="sheet">
   <h3>الإعدادات</h3>
   <div class="row"><label for="sEng">محرك القراءة<small>Dynamsoft أقوى بالضوء الضعيف والوصولات المطوية</small></label><select id="sEng"><option value="auto">تلقائي (Dynamsoft أولاً)</option><option value="dynamsoft">Dynamsoft</option><option value="native">محرك الموبايل</option><option value="zxing">ZXing</option></select></div>
-  <div class="row" style="flex-wrap:wrap"><label for="sKey">مفتاح Dynamsoft<small>فارغ = مفتاح تجربة مجاني 24 ساعة. للتجربة 30 يوم اطلب مفتاح من <a href="https://www.dynamsoft.com/customer/license/trialLicense?product=dbr&package=js" target="_blank" rel="noopener" style="color:var(--orange)">صفحة Dynamsoft</a></small></label><input type="text" id="sKey" dir="ltr" placeholder="DLS2…" style="width:100%"></div>
+  <div class="row" style="flex-wrap:wrap"><label for="sKey">مفتاح Dynamsoft<small>فارغ = ترخيص الفهود المثبّت. لمفتاح جديد اطلبه من <a href="https://www.dynamsoft.com/customer/license/trialLicense?product=dbr&package=js" target="_blank" rel="noopener" style="color:var(--orange)">صفحة Dynamsoft</a></small></label><input type="text" id="sKey" dir="ltr" placeholder="DLS2…" style="width:100%"></div>
   <div class="row"><label for="sMode">وضع Dynamsoft<small>«أقصى دقة» يقرأ الوصولات التالفة والبعيدة، أبطأ شوية</small></label><select id="sMode"><option value="ReadBarcodes_SpeedFirst">أقصى سرعة</option><option value="ReadBarcodes_Balance">متوازن</option><option value="ReadBarcodes_ReadRateFirst">أقصى دقة</option><option value="ReadDistantBarcodes">باركود بعيد</option><option value="ReadDenseBarcodes">باركود صغير وكثيف</option></select></div>
   <div class="row"><label for="sBeep">الصوت</label><input type="checkbox" id="sBeep"></div>
   <div class="row"><label for="sVib">الاهتزاز</label><input type="checkbox" id="sVib"></div>
@@ -276,7 +276,8 @@ const nf = n => n.toLocaleString("en-US");
 /* ---------- settings (per-device convenience) ---------- */
 const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 2, res: "1080", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst" };
 const DYN_URL = "https://cdn.jsdelivr.net/npm/dynamsoft-barcode-reader-bundle@11.6.3200/dist/dbr.bundle.js";
-const DYN_TEST_KEY = "DLS2eyJvcmdhbml6YXRpb25JRCI6IjIwMDAwMSJ9";   // Dynamsoft public test key: 24h free per browser
+const DYN_COMPANY_KEY = "DLS2eyJoYW5kc2hha2VDb2RlIjoiMTA2NjQwNTc3LU1UQTJOalF3TlRjM0xYZGxZaTFVY21saGJGQnliMm8iLCJtYWluU2VydmVyVVJMIjoiaHR0cHM6Ly9tZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwib3JnYW5pemF0aW9uSUQiOiIxMDY2NDA1NzciLCJzdGFuZGJ5U2VydmVyVVJMIjoiaHR0cHM6Ly9zZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwiY2hlY2tDb2RlIjoxNDQ3MzMwNzY0fQ==";   // Al-Fuhood 30-day trial (2026-11-23)
+const DYN_TEST_KEY = DYN_COMPANY_KEY;
 let S = { ...DEF };
 try { Object.assign(S, JSON.parse(localStorage.getItem("fh.settings") || "{}")); } catch (e) {}
 const saveS = () => { try { localStorage.setItem("fh.settings", JSON.stringify(S)); } catch (e) {} };
@@ -628,7 +629,7 @@ async function pickEngine() {
     try {
       $("startMsg").textContent = "جاري تحميل محرك Dynamsoft…";
       dyn = await withTimeout(initDyn(), 15000);
-      engine = "dynamsoft"; $("engine").textContent = "Dynamsoft" + (S.dynKey ? "" : " · مفتاح تجربة"); warn(""); return;
+      engine = "dynamsoft"; $("engine").textContent = "Dynamsoft" + (S.dynKey ? " · مفتاح مخصص" : " · ترخيص الفهود"); warn(""); return;
     } catch (e) {
       dyn = null; dynLoaded = null; clearDynMask();
       warn("محرك Dynamsoft ما اشتغل" + (e && /licen/i.test(e.message || "") ? " (المفتاح منتهي أو غلط)" : "") + "، القارئ شغّال على المحرك البديل.");
