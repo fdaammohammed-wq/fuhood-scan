@@ -248,6 +248,9 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
 
 <dialog id="setDlg"><div class="sheet">
   <h3>الإعدادات</h3>
+  <div class="row"><label for="sEng">محرك القراءة<small>Dynamsoft أقوى بالضوء الضعيف والوصولات المطوية</small></label><select id="sEng"><option value="auto">تلقائي (Dynamsoft أولاً)</option><option value="dynamsoft">Dynamsoft</option><option value="native">محرك الموبايل</option><option value="zxing">ZXing</option></select></div>
+  <div class="row" style="flex-wrap:wrap"><label for="sKey">مفتاح Dynamsoft<small>فارغ = مفتاح تجربة مجاني 24 ساعة. للتجربة 30 يوم اطلب مفتاح من <a href="https://www.dynamsoft.com/customer/license/trialLicense?product=dbr&package=js" target="_blank" rel="noopener" style="color:var(--orange)">صفحة Dynamsoft</a></small></label><input type="text" id="sKey" dir="ltr" placeholder="DLS2…" style="width:100%"></div>
+  <div class="row"><label for="sMode">وضع Dynamsoft<small>«أقصى دقة» يقرأ الوصولات التالفة والبعيدة، أبطأ شوية</small></label><select id="sMode"><option value="ReadBarcodes_SpeedFirst">أقصى سرعة</option><option value="ReadBarcodes_Balance">متوازن</option><option value="ReadBarcodes_ReadRateFirst">أقصى دقة</option><option value="ReadDistantBarcodes">باركود بعيد</option><option value="ReadDenseBarcodes">باركود صغير وكثيف</option></select></div>
   <div class="row"><label for="sBeep">الصوت</label><input type="checkbox" id="sBeep"></div>
   <div class="row"><label for="sVib">الاهتزاز</label><input type="checkbox" id="sVib"></div>
   <div class="row"><label for="sMin">أقل طول للرقم<small>يرفض القراءات القصيرة الغلط</small></label><input type="number" id="sMin" min="1" max="40"></div>
@@ -271,7 +274,9 @@ const fmtDate = t => { const d = new Date(t); return d.getFullYear() + "-" + pad
 const nf = n => n.toLocaleString("en-US");
 
 /* ---------- settings (per-device convenience) ---------- */
-const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 2, res: "1080" };
+const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 2, res: "1080", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst" };
+const DYN_URL = "https://cdn.jsdelivr.net/npm/dynamsoft-barcode-reader-bundle@11.6.3200/dist/dbr.bundle.js";
+const DYN_TEST_KEY = "DLS2eyJvcmdhbml6YXRpb25JRCI6IjIwMDAwMSJ9";   // Dynamsoft public test key: 24h free per browser
 let S = { ...DEF };
 try { Object.assign(S, JSON.parse(localStorage.getItem("fh.settings") || "{}")); } catch (e) {}
 const saveS = () => { try { localStorage.setItem("fh.settings", JSON.stringify(S)); } catch (e) {} };
@@ -600,8 +605,36 @@ let stream = null, track = null, running = false, engine = "–", detector = nul
 let facing = "environment", torchOn = false, zoomCaps = null, zoomLevel = 1;
 let canvas, ctx;
 
+let dyn = null, dynLoaded = null;
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.append(s); }); }
+async function initDyn() {
+  if (!window.Dynamsoft) await loadScript(DYN_URL);
+  const D = window.Dynamsoft;
+  if (!dynLoaded) {
+    D.Core.CoreModule.engineResourcePaths.rootDirectory = "https://cdn.jsdelivr.net/npm/";
+    dynLoaded = (async () => { await D.License.LicenseManager.initLicense(S.dynKey || DYN_TEST_KEY, true); await D.Core.CoreModule.loadWasm(); })();
+  }
+  await dynLoaded;
+  const r = await D.CVR.CaptureVisionRouter.createInstance();
+  // probe once so an expired key falls back right away instead of failing silently per frame
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const t = await r.capture(c, "ReadBarcodes_SpeedFirst");
+  if (t && t.errorCode && /licen/i.test(t.errorString || "")) throw new Error(t.errorString);
+  return r;
+}
 async function pickEngine() {
-  if ("BarcodeDetector" in window) {
+  const inClaude = !!(window.claude && window.claude.use);   // Claude pages block Dynamsoft's license server
+  if (S.eng === "dynamsoft" || (S.eng === "auto" && !inClaude)) {
+    try {
+      $("startMsg").textContent = "جاري تحميل محرك Dynamsoft…";
+      dyn = await withTimeout(initDyn(), 15000);
+      engine = "dynamsoft"; $("engine").textContent = "Dynamsoft" + (S.dynKey ? "" : " · مفتاح تجربة"); warn(""); return;
+    } catch (e) {
+      dyn = null; dynLoaded = null; clearDynMask();
+      warn("محرك Dynamsoft ما اشتغل" + (e && /licen/i.test(e.message || "") ? " (المفتاح منتهي أو غلط)" : "") + "، القارئ شغّال على المحرك البديل.");
+    }
+  }
+  if (S.eng !== "zxing" && "BarcodeDetector" in window) {
     try {
       const want = ["code_128", "code_39", "code_93", "codabar", "ean_13", "ean_8", "itf", "upc_a", "upc_e", "qr_code", "data_matrix", "pdf417"];
       const have = await BarcodeDetector.getSupportedFormats();
@@ -611,6 +644,17 @@ async function pickEngine() {
   }
   await zxReady();
   engine = "zxing"; $("engine").textContent = "ZXing";
+}
+function clearDynMask() {  // Dynamsoft covers the page with a license notice when the key fails; our fallback keeps working, so remove it
+  const kill = () => document.querySelectorAll('[class*="dls-license"]').forEach(e => e.remove());
+  kill(); let n = 0; const iv = setInterval(() => { kill(); if (++n > 40) clearInterval(iv); }, 250);
+}
+function withTimeout(p, ms) { return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]); }
+function dynTexts(r) {
+  if (!r) return [];
+  if (r.errorCode && /licen/i.test(r.errorString || "")) { dyn = null; engine = "–"; clearDynMask(); warn("انتهى مفتاح Dynamsoft، رجعنا للمحرك البديل."); pickEngine(); return []; }
+  const items = (r.decodedBarcodesResult && r.decodedBarcodesResult.barcodeResultItems) || [];
+  return items.map(i => i.text).filter(Boolean);
 }
 function zxReady() {
   return new Promise((res, rej) => {
@@ -642,6 +686,7 @@ function zxDecodeSource(src, w, h, crop) {
   catch (e) { return []; }
 }
 async function decodeFrame() {
+  if (engine === "dynamsoft" && dyn) return dynTexts(await dyn.capture(video, S.dynMode));
   if (engine === "native") { const r = await detector.detect(video); return r.map(x => x.rawValue); }
   return zxDecodeSource(video, video.videoWidth, video.videoHeight, true);
 }
@@ -728,7 +773,8 @@ $("photoInput").addEventListener("change", async e => {
     if (engine === "–") await pickEngine();
     const bmp = await createImageBitmap(f);
     let codes = [];
-    if (engine === "native") codes = (await detector.detect(bmp)).map(x => x.rawValue);
+    if (engine === "dynamsoft" && dyn) { const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height; c.getContext("2d").drawImage(bmp, 0, 0); codes = dynTexts(await dyn.capture(c, "ReadBarcodes_ReadRateFirst")); }
+    else if (engine === "native") codes = (await detector.detect(bmp)).map(x => x.rawValue);
     else { codes = zxDecodeSource(bmp, bmp.width, bmp.height, false); if (!codes.length) codes = zxDecodeSource(bmp, bmp.width, bmp.height, false); }
     if (!codes.length) { showLast("—", "bad", "ما انقرأ", "قرّب الباركود وخلي الصورة واضحة"); feedback("bad"); return; }
     for (const c of codes) accept(c, "photo", performance.now() - t0);
@@ -828,10 +874,14 @@ $("sessBtn").addEventListener("click", () => { renderSessions(); $("sessDlg").sh
 $("newSessBtn").addEventListener("click", () => { setSession(newSession()); $("sessDlg").close(); toast("بدأت دفعة جديدة"); });
 
 $("setBtn").addEventListener("click", () => {
-  $("sBeep").checked = S.beep; $("sVib").checked = S.vib; $("sMin").value = S.min; $("sPat").value = S.pat;
+  $("sMode").value = S.dynMode; $("sEng").value = S.eng; $("sKey").value = S.dynKey; $("sBeep").checked = S.beep; $("sVib").checked = S.vib; $("sMin").value = S.min; $("sPat").value = S.pat;
   $("sDbl").checked = dblOn(); $("sCool").value = S.cool; $("sRes").value = S.res;
   $("setDlg").showModal();
 });
+const reEngine = async () => { engine = "–"; dyn = null; if (running) { stopCam(); await startCam(); } };
+$("sMode").onchange = e => { S.dynMode = e.target.value; saveS(); };
+$("sEng").onchange = e => { S.eng = e.target.value; saveS(); reEngine(); };
+$("sKey").onchange = e => { S.dynKey = e.target.value.trim(); saveS(); dynLoaded = null; reEngine(); };
 $("sBeep").onchange = e => { S.beep = e.target.checked; saveS(); if (S.beep) { audio(); feedback("ok"); } };
 $("sVib").onchange = e => { S.vib = e.target.checked; saveS(); };
 $("sMin").onchange = e => { S.min = Math.max(1, +e.target.value || 1); saveS(); };
@@ -869,7 +919,7 @@ $("wipeBtn").addEventListener("click", async e => {
   let id = null; try { id = localStorage.getItem("fh.cur"); } catch (e) {}
   const s = sessions.find(x => x.id === id) || sessions[0] || newSession();
   setSession(s); catStatus();
-  $("engine").textContent = ("BarcodeDetector" in window ? "Native" : "ZXing") + " · تحميل " + nf(index.size) + " سجل بـ " + Math.round(performance.now() - t0) + "ms";
+  $("engine").textContent = (S.eng === "zxing" ? "ZXing" : S.eng === "native" ? "Native" : "Dynamsoft") + " · تحميل " + nf(index.size) + " سجل بـ " + Math.round(performance.now() - t0) + "ms";
   if (!isSecureContext) warn("الكاميرا تحتاج رابط https.");
 })();
 })();
