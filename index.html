@@ -41,6 +41,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 
 /* scanner */
 .cam{position:relative;border-radius:20px;overflow:hidden;background:#000;height:62vh;height:62dvh;min-height:340px;max-width:100%;border:1px solid var(--line);isolation:isolate}
+.diag{position:absolute;z-index:3;top:62px;left:50%;transform:translateX(-50%);font-size:11px;color:#cfe0ff;background:rgba(7,20,43,.7);padding:2px 10px;border-radius:999px;white-space:nowrap;pointer-events:none}
+.cam.full .diag{top:calc(62px + env(safe-area-inset-top,0px))}
 .cam.full{position:fixed;inset:0;z-index:30;height:auto;min-height:0;border-radius:0;border:0}
 .hud{position:absolute;left:10px;right:10px;bottom:10px;display:none;gap:10px;align-items:stretch;pointer-events:none}
 .cam.full .hud{display:flex;bottom:calc(10px + env(safe-area-inset-bottom,0px))}
@@ -191,12 +193,13 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
         <button class="ib" id="zoomBtn" hidden title="تقريب"><span class="num" id="zoomLbl" style="font-weight:700">1x</span></button>
       </div>
       <div class="g">
-        <button class="ib" id="flipBtn" title="تبديل الكاميرا"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3l2-3h8l2 3h3v12H3z"/><path d="M9 13a3 3 0 0 1 5-2.2M15 13a3 3 0 0 1-5 2.2"/></svg></button>
+        <button class="ib" id="flipBtn" title="تبديل العدسة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3l2-3h8l2 3h3v12H3z"/><path d="M9 13a3 3 0 0 1 5-2.2M15 13a3 3 0 0 1-5 2.2"/></svg></button>
         <button class="ib" id="fullBtn" title="ملء الشاشة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
         <button class="ib" id="pauseBtn" title="إيقاف مؤقت"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
       </div>
     </div>
     <div class="toast" id="toast" hidden></div>
+    <div class="diag num" id="diag" hidden></div>
     <div class="hud" aria-hidden="true">
       <div class="hc"><small>مستلم</small><b id="hCnt">0</b></div>
       <div class="hc hl" id="hLast"><div class="a" id="hA">وجّه على الوصل</div><div class="b" id="hB"></div><div class="c num" id="hC"></div></div>
@@ -254,7 +257,7 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
     <button class="act" id="setBtn">الإعدادات</button>
   </div>
   <input type="file" id="catInput" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
-  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span></p>
+  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v7</span></p>
 </div>
 
 <dialog id="sessDlg"><div class="sheet">
@@ -293,7 +296,7 @@ const fmtDate = t => { const d = new Date(t); return d.getFullYear() + "-" + pad
 const nf = n => n.toLocaleString("en-US");
 
 /* ---------- settings (per-device convenience) ---------- */
-const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 2, res: "720", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst", fmt: "fast" };
+const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 1.5, res: "720", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst", fmt: "fast" };
 const DYN_URL = "https://cdn.jsdelivr.net/npm/dynamsoft-barcode-reader-bundle@11.6.3200/dist/dbr.bundle.js";
 const DYN_COMPANY_KEY = "DLS2eyJoYW5kc2hha2VDb2RlIjoiMTA2NjQwNTc3LU1UQTJOalF3TlRjM0xYZGxZaTFVY21saGJGQnliMm8iLCJtYWluU2VydmVyVVJMIjoiaHR0cHM6Ly9tZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwib3JnYW5pemF0aW9uSUQiOiIxMDY2NDA1NzciLCJzdGFuZGJ5U2VydmVyVVJMIjoiaHR0cHM6Ly9zZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwiY2hlY2tDb2RlIjoxNDQ3MzMwNzY0fQ==";   // Al-Fuhood 30-day trial (2026-11-23)
 const DYN_TEST_KEY = DYN_COMPANY_KEY;
@@ -765,12 +768,31 @@ async function tick() {
     let codes = [];
     try { codes = await decodeFrame(); } catch (e) {}
     const ms = performance.now() - t0;
-    busy = false;
+    busy = false; decN++; decMs += ms; diag();
     for (const c of codes) accept(c, "cam", ms);
   }
   schedule();
 }
 
+let camId = null; try { camId = localStorage.getItem("fh.cam"); } catch (e) {}
+async function cams() { try { return (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput"); } catch (e) { return []; } }
+function bestBack(ds) {
+  const back = ds.filter(d => /back|rear|environment|خلف/i.test(d.label));
+  const pool = back.length ? back : ds.slice(1);
+  const main = pool.filter(d => !/wide|ultra|tele|depth|macro|زاوية/i.test(d.label));
+  const p = main.length ? main : pool;
+  return p.find(d => /(^|\D)0(\D|$)/.test(d.label)) || p[0] || null;
+}
+let decN = 0, decMs = 0, decT = performance.now();
+function diag() {
+  const now = performance.now(); if (now - decT < 1000) return;
+  const fps = decN * 1000 / (now - decT), avg = decN ? decMs / decN : 0; decN = 0; decMs = 0; decT = now;
+  const st = track && track.getSettings ? track.getSettings() : {};
+  const lab = (track && track.label || "").replace(/camera2?\s*/i, "cam ").slice(0, 18);
+  const d = $("diag"); d.hidden = false;
+  d.textContent = Math.round(fps) + " لقطة/ث · " + Math.round(avg) + "ms · " + (st.width || "?") + "×" + (st.height || "?") + " · " + engineShort() + " · " + lab;
+}
+const engineShort = () => engine === "native" ? "Google" : engine === "dynamsoft" ? "Dynamsoft" : "ZXing";
 async function startCam() {
   audio();
   const msg = $("startMsg");
@@ -780,8 +802,21 @@ async function startCam() {
     if (engine === "–") await pickEngine();
   } catch (e) { return camFail("ما گدرنا نحمّل محرك القراءة. تأكد من الإنترنت وعيد المحاولة."); }
   const h = S.res === "720" ? 720 : 1080;
+  const base = { width: { ideal: h * 16 / 9 }, height: { ideal: h }, frameRate: { ideal: 30 } };
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: facing }, width: { ideal: h * 16 / 9 }, height: { ideal: h }, frameRate: { ideal: 30 } } });
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: camId ? { ...base, deviceId: { exact: camId } } : { ...base, facingMode: { ideal: facing } } }); }
+    catch (e) { if (!camId) throw e; camId = null; stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { ...base, facingMode: { ideal: facing } } }); }
+    // Many Samsung/Xiaomi phones hand the browser the ultra-wide lens, which focuses badly up close. Switch once to the main back lens.
+    if (!camId && facing === "environment") {
+      const best = bestBack(await cams());
+      const curId = stream.getVideoTracks()[0].getSettings().deviceId;
+      if (best && best.deviceId && best.deviceId !== curId) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { ...base, deviceId: { exact: best.deviceId } } });
+      }
+      camId = stream.getVideoTracks()[0].getSettings().deviceId || null;
+      try { if (camId) localStorage.setItem("fh.cam", camId); } catch (e) {}
+    }
   } catch (e) {
     return camFail(e && e.name === "NotAllowedError" ? "الكاميرا مرفوضة بهاي الصفحة. استخدم «صوّر باركود» أو قارئ بلوتوث، أو افتح رابط القارئ المنشور." : "ما گدرنا نفتح الكاميرا. جرّب «صوّر باركود» أو قارئ بلوتوث.");
   }
@@ -824,7 +859,17 @@ $("fullBtn").addEventListener("click", async () => {
 $("pauseBtn").addEventListener("click", () => {
   if (running) { stopCam(); $("cam").classList.add("paused"); $("start").hidden = false; $("startBtn").textContent = "استئناف المسح"; $("startMsg").textContent = "المسح موقوف مؤقتاً."; }
 });
-$("flipBtn").addEventListener("click", async () => { facing = facing === "environment" ? "user" : "environment"; if (running) { stopCam(); await startCam(); } });
+$("flipBtn").addEventListener("click", async () => {
+  const ds = await cams();
+  if (ds.length > 1 && ds[0].label) {
+    const cur = track && track.getSettings ? track.getSettings().deviceId : camId;
+    const i = ds.findIndex(d => d.deviceId === cur);
+    camId = ds[(i + 1) % ds.length].deviceId; facing = "environment";
+    try { localStorage.setItem("fh.cam", camId); } catch (e) {}
+    toast("عدسة: " + (ds[(i + 1) % ds.length].label || (i + 2)));
+  } else { facing = facing === "environment" ? "user" : "environment"; camId = null; }
+  if (running) { stopCam(); await startCam(); }
+});
 $("torchBtn").addEventListener("click", async () => {
   if (!track) return; torchOn = !torchOn;
   try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); $("torchBtn").classList.toggle("on", torchOn); } catch (e) { torchOn = false; }
