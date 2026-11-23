@@ -257,7 +257,7 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
     <button class="act" id="setBtn">الإعدادات</button>
   </div>
   <input type="file" id="catInput" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
-  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v7</span></p>
+  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v8</span></p>
 </div>
 
 <dialog id="sessDlg"><div class="sheet">
@@ -830,6 +830,8 @@ async function startCam() {
     if (caps.exposureMode && caps.exposureMode.includes("continuous")) adv.push({ exposureMode: "continuous" });
     if (adv.length) await track.applyConstraints({ advanced: adv });
     $("torchBtn").hidden = !caps.torch;
+    let wantTorch = false; try { wantTorch = localStorage.getItem("fh.torch") === "1"; } catch (e) {}
+    if (caps.torch && wantTorch) { try { await track.applyConstraints({ advanced: [{ torch: true }] }); torchOn = true; $("torchBtn").classList.add("on"); } catch (e) {} }
     zoomCaps = caps.zoom && caps.zoom.max > 1 ? caps.zoom : null; $("zoomBtn").hidden = !zoomCaps;
     zoomLevel = 1; $("zoomLbl").textContent = "1x";
   } catch (e) {}
@@ -872,7 +874,7 @@ $("flipBtn").addEventListener("click", async () => {
 });
 $("torchBtn").addEventListener("click", async () => {
   if (!track) return; torchOn = !torchOn;
-  try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); $("torchBtn").classList.toggle("on", torchOn); } catch (e) { torchOn = false; }
+  try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); $("torchBtn").classList.toggle("on", torchOn); try { localStorage.setItem("fh.torch", torchOn ? "1" : ""); } catch (e) {} } catch (e) { torchOn = false; }
 });
 $("zoomBtn").addEventListener("click", async () => {
   if (!track || !zoomCaps) return;
