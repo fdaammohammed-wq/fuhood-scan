@@ -57,6 +57,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .hud .hl .b{font-size:15px;color:var(--orange);font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hud .hl .c{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cam video{width:100%;height:100%;object-fit:cover;display:block}
+.scview{position:absolute;inset:0;z-index:0}
+.cam.sc video{visibility:hidden}
 .frame{position:absolute;inset:18% 6%;border-radius:14px;pointer-events:none;box-shadow:0 0 0 999px rgba(3,9,22,.48)}
 .frame::before,.frame::after{content:"";position:absolute;inset:0;border-radius:14px;border:3px solid transparent}
 .frame::before{border-color:var(--orange) transparent var(--orange) transparent;clip-path:polygon(0 0,18% 0,18% 100%,0 100%,0 0,100% 0,100% 100%,82% 100%,82% 0)}
@@ -185,6 +187,7 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
 
   <section class="cam paused" id="cam" aria-label="الكاميرا">
     <video id="video" playsinline muted autoplay></video>
+    <div class="scview" id="scView" hidden></div>
     <div class="frame"><div class="laser"></div></div>
     <div class="flash" id="flash"></div>
     <div class="camtools">
@@ -257,7 +260,7 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
     <button class="act" id="setBtn">الإعدادات</button>
   </div>
   <input type="file" id="catInput" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
-  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v9</span></p>
+  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v11</span></p>
 </div>
 
 <dialog id="sessDlg"><div class="sheet">
@@ -269,9 +272,10 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
 
 <dialog id="setDlg"><div class="sheet">
   <h3>الإعدادات</h3>
-  <div class="row"><label for="sEng">محرك القراءة<small>Dynamsoft أقوى بالضوء الضعيف والوصولات المطوية</small></label><select id="sEng"><option value="auto">تلقائي (الأسرع بجهازك)</option><option value="dynamsoft">Dynamsoft</option><option value="native">محرك الموبايل</option><option value="zxing">ZXing</option></select></div>
+  <div class="row"><label for="sEng">محرك القراءة<small>Dynamsoft أقوى بالضوء الضعيف والوصولات المطوية</small></label><select id="sEng"><option value="auto">تلقائي (الأسرع بجهازك)</option><option value="scandit">Scandit</option><option value="dynamsoft">Dynamsoft</option><option value="native">محرك الموبايل</option><option value="zxing">ZXing</option></select></div>
   <div class="row" style="flex-wrap:wrap"><label for="sKey">مفتاح Dynamsoft<small>فارغ = ترخيص الفهود المثبّت. لمفتاح جديد اطلبه من <a href="https://www.dynamsoft.com/customer/license/trialLicense?product=dbr&package=js" target="_blank" rel="noopener" style="color:var(--orange)">صفحة Dynamsoft</a></small></label><input type="text" id="sKey" dir="ltr" placeholder="DLS2…" style="width:100%"></div>
   <div class="row"><label for="sFmt">أنواع الباركود<small>«QR فقط» أسرع بكثير، ووصولات جني كلها QR</small></label><select id="sFmt"><option value="fast">QR + Code128 (أسرع)</option><option value="all">كل الأنواع</option></select></div>
+  <div class="row" style="flex-wrap:wrap"><label for="sScKey">مفتاح Scandit<small>فارغ = مفتاح الفهود المثبّت. المفتاح لازم يكون مسجل عليه الدومين fdaammohammed-wq.github.io</small></label><input type="text" id="sScKey" dir="ltr" placeholder="License key" style="width:100%"></div>
   <div class="row"><label for="sMode">وضع Dynamsoft<small>«أقصى دقة» يقرأ الوصولات التالفة والبعيدة، أبطأ شوية</small></label><select id="sMode"><option value="ReadBarcodes_SpeedFirst">أقصى سرعة</option><option value="ReadBarcodes_Balance">متوازن</option><option value="ReadBarcodes_ReadRateFirst">أقصى دقة</option><option value="ReadDistantBarcodes">باركود بعيد</option><option value="ReadDenseBarcodes">باركود صغير وكثيف</option></select></div>
   <div class="row"><label for="sAuto">وضع الليل التلقائي<small>يشغّل الضوء وحده بالظلام ويقوّي وضوح الصورة</small></label><input type="checkbox" id="sAuto"></div>
   <div class="row"><label for="sBeep">الصوت</label><input type="checkbox" id="sBeep"></div>
@@ -297,7 +301,12 @@ const fmtDate = t => { const d = new Date(t); return d.getFullYear() + "-" + pad
 const nf = n => n.toLocaleString("en-US");
 
 /* ---------- settings (per-device convenience) ---------- */
-const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 1.5, res: "720", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst", fmt: "fast", autoLight: true };
+const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 1.5, res: "720", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst", fmt: "fast", autoLight: true, scKey: "" };
+const SC_VER = "8.7.0";
+const SC_COMPANY_KEY = "Ag2owC7KBlucKXxPg/tiKdQV5A0IO0jq0ANQ6lhAWFkqOup4umG7lh1cpXRiZDyME3+VQ/5kRoyCXWKilHCX/PdvBDYVS45w+1hiwqUjGwlKNbpvgAKgyK0eruNIQIkG/EOni4VVsjytVSqDfWQ2hRpFKrSsDBmrcRPem/1DJTcdagdPk1GXDbs+jjuZU3P5GUuyC75ZGsB+Kw1cLGnFCuEltJDmeZ32jUaz0/NXYdI+Sf5TnEdEESM3B84lcXeZLmzdbIdTLXowJdBdDGK8LB1H0QSpEH5tvi9+fOpup7OCTRiQAU+sGtAE5BlnTlCZS1Hj14tquxVyfmexdRCJhoxQcAydakBVMVXURiFia+NufFPraxNqZ9lnHF2UVX3lv0xKAlp/qTc+GQQqgETfZr5Dfz75NOu3O1Y4MvV/sVyhXbIpzEf72mJXYvXKS3phvkNLvr1ncM+yE6EKOgqcZLNuzCe/dN1MS32EwM56D3bjQWdGk0UuFqBt27/gdFJBhnWYZRY7Sx/ZJNvRYFtqv9Zs9x96A1xltWv9Golve7A2bgaLAD/TrjtlDZkGP3uXLk5SZTcdmqggZa2KNQOc1kdqZ96HduPZc3/aSvBBhpiDTt7m03uPOq10bhAnLnb4nmsi3bwZF2o2b+krsi1Qj+tA8qUqZl/P6VfgDWJdSvOcWh2uP0Fe4xNkzQ9FESS0FmMjP4x+nCbMbCaAlW6H2rF85MJFdy/nW3WiKUgWbYN/VL7+FjWEjb1iV3eEREUyaFXrqSFJyzbbdiA8d3iqVDpD/af/dLw74WaUmmkjWTFlI1boakV0TUV6l17pTtQMXkfuOzhitA+hLc1lryWpSml9cpuMKwoIBUKTY5sv8eWuQtSDTQTKxEoCEAOYFjPZJ1vbZVJp5/0hMRmVrl0VgC1Z+EbLZAMg9X8ZRiMYH3pUch7JxVE4k6t3pprSAqE5dgNS5FFvJM0nc1n5HQoQNrdqoFIaDj0u90PKl/Jt2xTrQluppny9qvPtRVFU9cQCcfWuv5HbiJF3TYHkUr8XaZK7e0Q8ZdjZlnfrdwwTbnzAk8SoW2TCICAarZbXimpygGRAJgapasfKsP+M4oZEq1eyTpUUSGBp4jaCTSsl4nNfhyuepLVm06v6pcyURbfWj9DLvAb6Xyvzrrc6iRl2XX4abW3b9cUJ5bJwghbP3xNzfrrAi4uFV/SO8cVFT2z8TKk7ThCJit3Vyh7SP8C6wQQr9HYuRpqvofrk7PUvZ6zxHH3KJaFBViW5NZ89ZfMnOxg3QHWKCNETQrSumsQTMKC8vrE7gURS77quoThV8AH6ccrwPli7QY2gcjVquZetFb1ToaPbF1zvZZezPCWAWxIDBTLujqftwpuvmPntbgIIZgltafNin6uZE0nhSOeteux2KRdoGDzbSSsBCI2ggbsvIl7kZt/H64m7+p1niV6zZn59BJHte35gcuWw/ilU2sqjsuz4YbcUTiGuwyLB7/ChGyh7v6Uq6mBa20XhzIU94b8QLRjvwwozY99cJNaTe8UyuvbNHcAPXmEt0H5JEJbJeHfMekvX6au2/7Ph40i8uIAC4WvtcmACDqcrirCnzkdHqxGbKQRIeaw9mcC7FZOb6bYtGPaqgXHZu8j/LUoQjs6Ve67Furd6pqPBVrIrMPVa4ljeZ65jqcmJynOyv/YhOIY=";   // Al-Fuhood Scandit trial (2026-11-23)
+const SC_CORE = "https://cdn.jsdelivr.net/npm/@scandit/web-datacapture-core@" + SC_VER + "/build/js/umd/index.js";
+const SC_BAR = "https://cdn.jsdelivr.net/npm/@scandit/web-datacapture-barcode@" + SC_VER + "/build/js/umd/index.js";
+const SC_LIB = "https://cdn.jsdelivr.net/npm/@scandit/web-datacapture-barcode@" + SC_VER + "/sdc-lib/";
 const DYN_URL = "https://cdn.jsdelivr.net/npm/dynamsoft-barcode-reader-bundle@11.6.3200/dist/dbr.bundle.js";
 const DYN_COMPANY_KEY = "DLS2eyJoYW5kc2hha2VDb2RlIjoiMTA2NjQwNTc3LU1UQTJOalF3TlRjM0xYZGxZaTFVY21saGJGQnliMm8iLCJtYWluU2VydmVyVVJMIjoiaHR0cHM6Ly9tZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwib3JnYW5pemF0aW9uSUQiOiIxMDY2NDA1NzciLCJzdGFuZGJ5U2VydmVyVVJMIjoiaHR0cHM6Ly9zZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwiY2hlY2tDb2RlIjoxNDQ3MzMwNzY0fQ==";   // Al-Fuhood 30-day trial (2026-11-23)
 const DYN_TEST_KEY = DYN_COMPANY_KEY;
@@ -797,6 +806,60 @@ async function tick() {
   schedule();
 }
 
+/* ---------- Scandit (own camera pipeline; used when a license key is set) ---------- */
+let sc = null, scReady = null;
+const inClaudeView = () => !!(window.claude && window.claude.use);
+let scBlocked = false;   // set for this page load when the license is refused
+const scKey = () => S.scKey || SC_COMPANY_KEY;
+const wantScandit = () => !scBlocked && !!scKey() && (S.eng === "scandit" || S.eng === "auto") && !inClaudeView();
+async function initScandit() {
+  if (!window.SDCCore) await loadScript(SC_CORE);
+  if (!window.SDCBarcode) await loadScript(SC_BAR);
+  const C = window.SDCCore, B = window.SDCBarcode;
+  const ctx = await C.DataCaptureContext.forLicenseKey(scKey(), { libraryLocation: SC_LIB, moduleLoaders: [B.barcodeCaptureLoader()] });
+  ctx.addListener({ didChangeStatus: (c, status) => { if (status && status.isValid === false) scanditRefused(status.message || ""); } });
+  const st = new B.BarcodeCaptureSettings();
+  const Y = B.Symbology;
+  st.enableSymbologies(FAST(S) ? [Y.QR, Y.Code128] : [Y.QR, Y.Code128, Y.Code39, Y.Code93, Y.EAN13UPCA, Y.EAN8, Y.UPCE, Y.InterleavedTwoOfFive, Y.DataMatrix, Y.PDF417].filter(Boolean));
+  st.codeDuplicateFilter = Math.round(S.cool * 1000);
+  const bc = await B.BarcodeCapture.forContext(ctx, st);
+  try { const fb = B.BarcodeCaptureFeedback.default; fb.success = new C.Feedback(null, null); await bc.setFeedback(fb); } catch (e) {}   // we play our own beep
+  bc.addListener({ didScan: (m, session) => { const b = session.newlyRecognizedBarcode; if (b && b.data) { decN++; accept(b.data, "cam", 0); } } });
+  const cam = C.Camera.pickBestGuess();
+  try { await cam.applySettings(B.BarcodeCapture.recommendedCameraSettings); } catch (e) {}
+  await ctx.setFrameSource(cam);
+  const view = await C.DataCaptureView.forContext(ctx);
+  view.connectToElement($("scView"));
+  return { C, B, ctx, bc, cam, view };
+}
+async function startScandit() {
+  $("startMsg").textContent = "جاري تشغيل Scandit…";
+  sc = await withTimeout(scReady || (scReady = initScandit()), 20000);
+  $("scView").hidden = false; $("cam").classList.add("sc");
+  await sc.bc.setEnabled(true);
+  await sc.cam.switchToDesiredState(sc.C.FrameSourceState.On);
+  engine = "scandit"; $("engine").textContent = "Scandit · SDK " + SC_VER; warn("");
+  try { torchCaps = await sc.cam.isTorchAvailable(); $("torchBtn").hidden = !torchCaps; } catch (e) {}
+  let wantTorch = false; try { wantTorch = localStorage.getItem("fh.torch") === "1"; } catch (e) {}
+  if (torchCaps && wantTorch) { try { await sc.cam.setDesiredTorchState(sc.C.TorchState.On); torchOn = true; $("torchBtn").classList.add("on"); } catch (e) {} }
+  $("zoomBtn").hidden = true;
+  $("start").hidden = true; $("cam").classList.remove("paused");
+  if ($("cam").dataset.wantFull) { delete $("cam").dataset.wantFull; setFull(true); }
+  running = true; wake();
+  const iv = setInterval(() => { if (!running || engine !== "scandit") return clearInterval(iv); const d = $("diag"); d.hidden = false; d.textContent = "Scandit · " + decN + " قراءة"; }, 1000);
+}
+async function scanditRefused(msg) {
+  if (scBlocked) return; scBlocked = true;
+  const was = running; stopScandit(); running = false; sc = null;
+  $("scView").hidden = true; $("cam").classList.remove("sc"); engine = "–";
+  warn("ترخيص Scandit مرفوض: " + String(msg).slice(0, 90) + " · القارئ رجع للمحرك البديل.");
+  if (was) await startCam();
+}
+function stopScandit() {
+  if (!sc) return;
+  try { sc.cam.switchToDesiredState(sc.C.FrameSourceState.Off); sc.bc.setEnabled(false); } catch (e) {}
+}
+
 let camId = null; try { camId = localStorage.getItem("fh.cam"); } catch (e) {}
 async function cams() { try { return (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput"); } catch (e) { return []; } }
 function bestBack(ds) {
@@ -821,6 +884,13 @@ async function startCam() {
   const msg = $("startMsg");
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return camFail("هذا المتصفح ما يسمح بالكاميرا هنا.");
   msg.textContent = "جاري تشغيل الكاميرا…";
+  if (wantScandit()) {
+    try { await startScandit(); return; }
+    catch (e) {
+      sc = null; scReady = null; $("scView").hidden = true; $("cam").classList.remove("sc"); engine = "–";
+      warn("Scandit ما اشتغل" + (e && e.message ? " (" + String(e.message).slice(0, 80) + ")" : "") + "، القارئ شغّال على المحرك البديل.");
+    }
+  }
   try {
     if (engine === "–") await pickEngine();
   } catch (e) { return camFail("ما گدرنا نحمّل محرك القراءة. تأكد من الإنترنت وعيد المحاولة."); }
@@ -869,6 +939,7 @@ function camFail(text) {
 }
 function stopCam() {
   running = false;
+  if (engine === "scandit") { stopScandit(); torchOn = false; $("torchBtn").classList.remove("on"); return; }
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = null; track = null; torchOn = false; $("torchBtn").classList.remove("on");
 }
@@ -897,6 +968,7 @@ $("flipBtn").addEventListener("click", async () => {
   if (running) { stopCam(); await startCam(); }
 });
 $("torchBtn").addEventListener("click", async () => {
+  if (engine === "scandit" && sc) { torchOn = !torchOn; try { await sc.cam.setDesiredTorchState(torchOn ? sc.C.TorchState.On : sc.C.TorchState.Off); $("torchBtn").classList.toggle("on", torchOn); localStorage.setItem("fh.torch", torchOn ? "1" : ""); } catch (e) {} return; }
   if (!track) return; torchOn = !torchOn; autoLit = true;
   try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); $("torchBtn").classList.toggle("on", torchOn); try { localStorage.setItem("fh.torch", torchOn ? "1" : ""); } catch (e) {} } catch (e) { torchOn = false; }
 });
@@ -1020,12 +1092,13 @@ $("sessBtn").addEventListener("click", () => { renderSessions(); $("sessDlg").sh
 $("newSessBtn").addEventListener("click", () => { setSession(newSession()); $("sessDlg").close(); toast("بدأت دفعة جديدة"); });
 
 $("setBtn").addEventListener("click", () => {
-  $("sAuto").checked = S.autoLight; $("sFmt").value = S.fmt; $("sMode").value = S.dynMode; $("sEng").value = S.eng; $("sKey").value = S.dynKey; $("sBeep").checked = S.beep; $("sVib").checked = S.vib; $("sMin").value = S.min; $("sPat").value = S.pat;
+  $("sScKey").value = S.scKey; $("sAuto").checked = S.autoLight; $("sFmt").value = S.fmt; $("sMode").value = S.dynMode; $("sEng").value = S.eng; $("sKey").value = S.dynKey; $("sBeep").checked = S.beep; $("sVib").checked = S.vib; $("sMin").value = S.min; $("sPat").value = S.pat;
   $("sDbl").checked = dblOn(); $("sCool").value = S.cool; $("sRes").value = S.res;
   $("setDlg").showModal();
 });
-const reEngine = async () => { engine = "–"; dyn = null; detector = null; if (running) { stopCam(); await startCam(); } };
+const reEngine = async () => { if (engine === "scandit") stopScandit(); $("scView").hidden = true; $("cam").classList.remove("sc"); engine = "–"; dyn = null; detector = null; if (running) { stopCam(); await startCam(); } };
 $("sMode").onchange = e => { S.dynMode = e.target.value; saveS(); if (dyn) tuneDyn(dyn); };
+$("sScKey").onchange = async e => { S.scKey = e.target.value.trim(); saveS(); sc = null; scReady = null; if (running) { stopCam(); await startCam(); } };
 $("sAuto").onchange = e => { S.autoLight = e.target.checked; saveS(); autoLit = false; };
 $("sFmt").onchange = e => { S.fmt = e.target.value; saveS(); zx = null; reEngine(); };
 $("sEng").onchange = e => { S.eng = e.target.value; saveS(); reEngine(); };
