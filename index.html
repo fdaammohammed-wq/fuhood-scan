@@ -260,7 +260,7 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
     <button class="act" id="setBtn">الإعدادات</button>
   </div>
   <input type="file" id="catInput" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
-  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v11</span></p>
+  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v13</span></p>
 </div>
 
 <dialog id="sessDlg"><div class="sheet">
@@ -312,6 +312,7 @@ const DYN_COMPANY_KEY = "DLS2eyJoYW5kc2hha2VDb2RlIjoiMTA2NjQwNTc3LU1UQTJOalF3TlR
 const DYN_TEST_KEY = DYN_COMPANY_KEY;
 let S = { ...DEF };
 try { Object.assign(S, JSON.parse(localStorage.getItem("fh.settings") || "{}")); } catch (e) {}
+if (S.sv !== 13) { S.eng = "auto"; S.sv = 13; if (S.scKey && S.scKey.length < 64) S.scKey = ""; try { localStorage.setItem("fh.settings", JSON.stringify(S)); } catch (e) {} }   // one-time: move every phone onto the Scandit-first engine order
 const saveS = () => { try { localStorage.setItem("fh.settings", JSON.stringify(S)); } catch (e) {} };
 let patRe = null;
 const compilePat = () => { try { patRe = S.pat ? new RegExp(S.pat) : null; } catch (e) { patRe = null; } };
@@ -810,7 +811,7 @@ async function tick() {
 let sc = null, scReady = null;
 const inClaudeView = () => !!(window.claude && window.claude.use);
 let scBlocked = false;   // set for this page load when the license is refused
-const scKey = () => S.scKey || SC_COMPANY_KEY;
+const scKey = () => (S.scKey && S.scKey.length >= 64 ? S.scKey : SC_COMPANY_KEY);   // a domain or short text typed here is not a key
 const wantScandit = () => !scBlocked && !!scKey() && (S.eng === "scandit" || S.eng === "auto") && !inClaudeView();
 async function initScandit() {
   if (!window.SDCCore) await loadScript(SC_CORE);
@@ -1098,7 +1099,7 @@ $("setBtn").addEventListener("click", () => {
 });
 const reEngine = async () => { if (engine === "scandit") stopScandit(); $("scView").hidden = true; $("cam").classList.remove("sc"); engine = "–"; dyn = null; detector = null; if (running) { stopCam(); await startCam(); } };
 $("sMode").onchange = e => { S.dynMode = e.target.value; saveS(); if (dyn) tuneDyn(dyn); };
-$("sScKey").onchange = async e => { S.scKey = e.target.value.trim(); saveS(); sc = null; scReady = null; if (running) { stopCam(); await startCam(); } };
+$("sScKey").onchange = async e => { S.scKey = e.target.value.trim(); if (S.scKey && S.scKey.length < 64) { toast("هذا مو مفتاح Scandit، المفتاح نص طويل جداً"); S.scKey = ""; e.target.value = ""; } saveS(); sc = null; scReady = null; if (running) { stopCam(); await startCam(); } };
 $("sAuto").onchange = e => { S.autoLight = e.target.checked; saveS(); autoLit = false; };
 $("sFmt").onchange = e => { S.fmt = e.target.value; saveS(); zx = null; reEngine(); };
 $("sEng").onchange = e => { S.eng = e.target.value; saveS(); reEngine(); };
@@ -1141,6 +1142,7 @@ $("wipeBtn").addEventListener("click", async e => {
   const s = sessions.find(x => x.id === id) || sessions[0] || newSession();
   setSession(s); catStatus();
   // warm the scan engine up before the first tap, so scanning starts instantly
+  setTimeout(() => { if (wantScandit() && !scReady) { scReady = initScandit(); scReady.catch(() => { scReady = null; }); } }, 200);
   setTimeout(() => { if (engine === "–" && !running) pickEngine().then(() => { if (!running) $("startMsg").textContent = "وجّه الكاميرا على باركود الوصل. المسح متواصل بدون ضغط، وكل قراءة تطلع بصوت واهتزاز."; }).catch(() => {}); }, 300);
   try { if (localStorage.getItem("fh.full")) $("fullBtn").classList.add("on"), $("cam").dataset.wantFull = "1"; } catch (e) {}
   if (engine === "–") $("engine").textContent = "يجهز…";
