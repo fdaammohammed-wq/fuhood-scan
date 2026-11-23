@@ -257,7 +257,7 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
     <button class="act" id="setBtn">الإعدادات</button>
   </div>
   <input type="file" id="catInput" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
-  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v8</span></p>
+  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span> · <span class="num">v9</span></p>
 </div>
 
 <dialog id="sessDlg"><div class="sheet">
@@ -273,6 +273,7 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
   <div class="row" style="flex-wrap:wrap"><label for="sKey">مفتاح Dynamsoft<small>فارغ = ترخيص الفهود المثبّت. لمفتاح جديد اطلبه من <a href="https://www.dynamsoft.com/customer/license/trialLicense?product=dbr&package=js" target="_blank" rel="noopener" style="color:var(--orange)">صفحة Dynamsoft</a></small></label><input type="text" id="sKey" dir="ltr" placeholder="DLS2…" style="width:100%"></div>
   <div class="row"><label for="sFmt">أنواع الباركود<small>«QR فقط» أسرع بكثير، ووصولات جني كلها QR</small></label><select id="sFmt"><option value="fast">QR + Code128 (أسرع)</option><option value="all">كل الأنواع</option></select></div>
   <div class="row"><label for="sMode">وضع Dynamsoft<small>«أقصى دقة» يقرأ الوصولات التالفة والبعيدة، أبطأ شوية</small></label><select id="sMode"><option value="ReadBarcodes_SpeedFirst">أقصى سرعة</option><option value="ReadBarcodes_Balance">متوازن</option><option value="ReadBarcodes_ReadRateFirst">أقصى دقة</option><option value="ReadDistantBarcodes">باركود بعيد</option><option value="ReadDenseBarcodes">باركود صغير وكثيف</option></select></div>
+  <div class="row"><label for="sAuto">وضع الليل التلقائي<small>يشغّل الضوء وحده بالظلام ويقوّي وضوح الصورة</small></label><input type="checkbox" id="sAuto"></div>
   <div class="row"><label for="sBeep">الصوت</label><input type="checkbox" id="sBeep"></div>
   <div class="row"><label for="sVib">الاهتزاز</label><input type="checkbox" id="sVib"></div>
   <div class="row"><label for="sMin">أقل طول للرقم<small>يرفض القراءات القصيرة الغلط</small></label><input type="number" id="sMin" min="1" max="40"></div>
@@ -296,7 +297,7 @@ const fmtDate = t => { const d = new Date(t); return d.getFullYear() + "-" + pad
 const nf = n => n.toLocaleString("en-US");
 
 /* ---------- settings (per-device convenience) ---------- */
-const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 1.5, res: "720", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst", fmt: "fast" };
+const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 1.5, res: "720", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst", fmt: "fast", autoLight: true };
 const DYN_URL = "https://cdn.jsdelivr.net/npm/dynamsoft-barcode-reader-bundle@11.6.3200/dist/dbr.bundle.js";
 const DYN_COMPANY_KEY = "DLS2eyJoYW5kc2hha2VDb2RlIjoiMTA2NjQwNTc3LU1UQTJOalF3TlRjM0xYZGxZaTFVY21saGJGQnliMm8iLCJtYWluU2VydmVyVVJMIjoiaHR0cHM6Ly9tZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwib3JnYW5pemF0aW9uSUQiOiIxMDY2NDA1NzciLCJzdGFuZGJ5U2VydmVyVVJMIjoiaHR0cHM6Ly9zZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwiY2hlY2tDb2RlIjoxNDQ3MzMwNzY0fQ==";   // Al-Fuhood 30-day trial (2026-11-23)
 const DYN_TEST_KEY = DYN_COMPANY_KEY;
@@ -729,21 +730,41 @@ function zxReady() {
 }
 // Crop the frame to the aiming window and cap its width: the engine reads fewer pixels, so every frame decodes faster.
 let roiC, roiX;
-function roi(w, h) {
+// Night mode: sample the picture brightness; in the dark switch the light on, and boost contrast on every other frame.
+let ENH = "grayscale(1) contrast(1.9) brightness(1.5)";
+let dark = false, lumT = 0, lumC, lumX, frameN = 0, torchCaps = false, autoLit = false;
+function checkLight() {
+  const n = performance.now(); if (n - lumT < 700 || !video.videoWidth) return; lumT = n;
+  if (!lumC) { lumC = document.createElement("canvas"); lumC.width = lumC.height = 24; lumX = lumC.getContext("2d", { willReadFrequently: true }); }
+  lumX.drawImage(video, 0, 0, 24, 24);
+  const d = lumX.getImageData(0, 0, 24, 24).data; let sum = 0;
+  for (let i = 0; i < d.length; i += 4) sum += d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+  const mean = sum / 576;
+  const gain = Math.min(6, Math.max(1.2, 120 / Math.max(mean, 8)));   // lift the picture to mid-grey, then stretch contrast
+  ENH = "grayscale(1) brightness(" + gain.toFixed(2) + ") contrast(2.2)";
+  dark = mean < (torchOn ? 55 : 80);
+  if (dark && S.autoLight && torchCaps && !torchOn && !autoLit) {
+    autoLit = true;
+    track.applyConstraints({ advanced: [{ torch: true }] }).then(() => { torchOn = true; $("torchBtn").classList.add("on"); toast("المكان مظلم، شغّلت الضوء"); }).catch(() => {});
+  }
+}
+function roi(w, h, enh) {
   if (!roiC) { roiC = document.createElement("canvas"); roiX = roiC.getContext("2d", { willReadFrequently: true }); }
   const sw = Math.round(w * 0.9), sh = Math.round(h * 0.7), sx = (w - sw) >> 1, sy = (h - sh) >> 1;
   const sc = Math.min(1, 960 / Math.max(sw, sh));
   const cw = Math.round(sw * sc), ch = Math.round(sh * sc);
   if (roiC.width !== cw || roiC.height !== ch) { roiC.width = cw; roiC.height = ch; }
+  roiX.filter = enh ? ENH : "none";
   roiX.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
   return roiC;
 }
-function zxDecodeSource(src, w, h, crop) {
+function zxDecodeSource(src, w, h, crop, enh) {
   if (!canvas) { canvas = document.createElement("canvas"); ctx = canvas.getContext("2d", { willReadFrequently: true }); }
   let sx = 0, sy = 0, sw = w, sh = h;
   if (crop) { sw = Math.round(w * 0.86); sh = Math.round(h * 0.6); sx = (w - sw) >> 1; sy = (h - sh) >> 1; }
   const scale = Math.min(1, 1100 / sw);
   canvas.width = Math.round(sw * scale); canvas.height = Math.round(sh * scale);
+  ctx.filter = enh ? ENH : "none";
   ctx.drawImage(src, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
   const Z = zx.Z;
   const lum = new Z.HTMLCanvasElementLuminanceSource(canvas);
@@ -753,9 +774,11 @@ function zxDecodeSource(src, w, h, crop) {
   catch (e) { return []; }
 }
 async function decodeFrame() {
-  if (engine === "dynamsoft" && dyn) return dynTexts(await dyn.capture(roi(video.videoWidth, video.videoHeight), S.dynMode));
-  if (engine === "native") { const r = await detector.detect(video); return r.map(x => x.rawValue); }
-  return zxDecodeSource(video, video.videoWidth, video.videoHeight, true);
+  checkLight();
+  const enh = dark && (++frameN & 1) === 1;
+  if (engine === "dynamsoft" && dyn) return dynTexts(await dyn.capture(roi(video.videoWidth, video.videoHeight, enh), S.dynMode));
+  if (engine === "native") { const r = await detector.detect(enh ? roi(video.videoWidth, video.videoHeight, true) : video); return r.map(x => x.rawValue); }
+  return zxDecodeSource(video, video.videoWidth, video.videoHeight, true, enh);
 }
 const rvfc = "requestVideoFrameCallback" in HTMLVideoElement.prototype;
 let busy = false;
@@ -790,7 +813,7 @@ function diag() {
   const st = track && track.getSettings ? track.getSettings() : {};
   const lab = (track && track.label || "").replace(/camera2?\s*/i, "cam ").slice(0, 18);
   const d = $("diag"); d.hidden = false;
-  d.textContent = Math.round(fps) + " لقطة/ث · " + Math.round(avg) + "ms · " + (st.width || "?") + "×" + (st.height || "?") + " · " + engineShort() + " · " + lab;
+  d.textContent = Math.round(fps) + " لقطة/ث · " + Math.round(avg) + "ms · " + (st.width || "?") + "×" + (st.height || "?") + " · " + engineShort() + (dark ? " · 🌙" : "") + " · " + lab;
 }
 const engineShort = () => engine === "native" ? "Google" : engine === "dynamsoft" ? "Dynamsoft" : "ZXing";
 async function startCam() {
@@ -829,7 +852,8 @@ async function startCam() {
     if (caps.focusMode && caps.focusMode.includes("continuous")) adv.push({ focusMode: "continuous" });
     if (caps.exposureMode && caps.exposureMode.includes("continuous")) adv.push({ exposureMode: "continuous" });
     if (adv.length) await track.applyConstraints({ advanced: adv });
-    $("torchBtn").hidden = !caps.torch;
+    $("torchBtn").hidden = !caps.torch; torchCaps = !!caps.torch; autoLit = false; dark = false;
+    try { await track.applyConstraints({ frameRate: { min: 20, ideal: 30 } }); } catch (e) {}   // cap exposure time: less motion blur at night
     let wantTorch = false; try { wantTorch = localStorage.getItem("fh.torch") === "1"; } catch (e) {}
     if (caps.torch && wantTorch) { try { await track.applyConstraints({ advanced: [{ torch: true }] }); torchOn = true; $("torchBtn").classList.add("on"); } catch (e) {} }
     zoomCaps = caps.zoom && caps.zoom.max > 1 ? caps.zoom : null; $("zoomBtn").hidden = !zoomCaps;
@@ -873,7 +897,7 @@ $("flipBtn").addEventListener("click", async () => {
   if (running) { stopCam(); await startCam(); }
 });
 $("torchBtn").addEventListener("click", async () => {
-  if (!track) return; torchOn = !torchOn;
+  if (!track) return; torchOn = !torchOn; autoLit = true;
   try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); $("torchBtn").classList.toggle("on", torchOn); try { localStorage.setItem("fh.torch", torchOn ? "1" : ""); } catch (e) {} } catch (e) { torchOn = false; }
 });
 $("zoomBtn").addEventListener("click", async () => {
@@ -996,12 +1020,13 @@ $("sessBtn").addEventListener("click", () => { renderSessions(); $("sessDlg").sh
 $("newSessBtn").addEventListener("click", () => { setSession(newSession()); $("sessDlg").close(); toast("بدأت دفعة جديدة"); });
 
 $("setBtn").addEventListener("click", () => {
-  $("sFmt").value = S.fmt; $("sMode").value = S.dynMode; $("sEng").value = S.eng; $("sKey").value = S.dynKey; $("sBeep").checked = S.beep; $("sVib").checked = S.vib; $("sMin").value = S.min; $("sPat").value = S.pat;
+  $("sAuto").checked = S.autoLight; $("sFmt").value = S.fmt; $("sMode").value = S.dynMode; $("sEng").value = S.eng; $("sKey").value = S.dynKey; $("sBeep").checked = S.beep; $("sVib").checked = S.vib; $("sMin").value = S.min; $("sPat").value = S.pat;
   $("sDbl").checked = dblOn(); $("sCool").value = S.cool; $("sRes").value = S.res;
   $("setDlg").showModal();
 });
 const reEngine = async () => { engine = "–"; dyn = null; detector = null; if (running) { stopCam(); await startCam(); } };
 $("sMode").onchange = e => { S.dynMode = e.target.value; saveS(); if (dyn) tuneDyn(dyn); };
+$("sAuto").onchange = e => { S.autoLight = e.target.checked; saveS(); autoLit = false; };
 $("sFmt").onchange = e => { S.fmt = e.target.value; saveS(); zx = null; reEngine(); };
 $("sEng").onchange = e => { S.eng = e.target.value; saveS(); reEngine(); };
 $("sKey").onchange = e => { S.dynKey = e.target.value.trim(); saveS(); dynLoaded = null; reEngine(); };
