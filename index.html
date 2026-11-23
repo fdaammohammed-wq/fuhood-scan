@@ -40,9 +40,22 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .chip i{font-style:normal;color:var(--orange)}
 
 /* scanner */
-.cam{position:relative;border-radius:20px;overflow:hidden;background:#000;aspect-ratio:4/3.1;max-width:100%;border:1px solid var(--line);isolation:isolate}
+.cam{position:relative;border-radius:20px;overflow:hidden;background:#000;height:62vh;height:62dvh;min-height:340px;max-width:100%;border:1px solid var(--line);isolation:isolate}
+.cam.full{position:fixed;inset:0;z-index:30;height:auto;min-height:0;border-radius:0;border:0}
+.hud{position:absolute;left:10px;right:10px;bottom:10px;display:none;gap:10px;align-items:stretch;pointer-events:none}
+.cam.full .hud{display:flex;bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.cam.full .camtools{top:calc(10px + env(safe-area-inset-top,0px))}
+.cam.full .toast{bottom:auto;top:calc(64px + env(safe-area-inset-top,0px))}
+.hud .hc{background:rgba(7,20,43,.86);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:16px;padding:8px 14px;display:flex;flex-direction:column;justify-content:center}
+.hud .hc b{font-size:38px;line-height:1;font-family:var(--f-num)}
+.hud .hc small{color:var(--mute);font-size:11px;font-weight:700}
+.hud .hl{flex:1;min-width:0;border-inline-start:5px solid var(--line)}
+.hud .hl.ok{border-inline-start-color:var(--ok)} .hud .hl.dup{border-inline-start-color:var(--dup)} .hud .hl.bad{border-inline-start-color:var(--bad)} .hud .hl.unk{border-inline-start-color:var(--blue)}
+.hud .hl .a{font-size:20px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hud .hl .b{font-size:15px;color:var(--orange);font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hud .hl .c{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cam video{width:100%;height:100%;object-fit:cover;display:block}
-.frame{position:absolute;inset:22% 9%;border-radius:14px;pointer-events:none;box-shadow:0 0 0 999px rgba(3,9,22,.48)}
+.frame{position:absolute;inset:18% 6%;border-radius:14px;pointer-events:none;box-shadow:0 0 0 999px rgba(3,9,22,.48)}
 .frame::before,.frame::after{content:"";position:absolute;inset:0;border-radius:14px;border:3px solid transparent}
 .frame::before{border-color:var(--orange) transparent var(--orange) transparent;clip-path:polygon(0 0,18% 0,18% 100%,0 100%,0 0,100% 0,100% 100%,82% 100%,82% 0)}
 .frame::after{border-color:transparent var(--orange)}
@@ -54,13 +67,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .flash.dup{background:radial-gradient(circle,rgba(255,176,32,.0) 30%,rgba(255,176,32,.6));opacity:1;transition:none}
 .flash.bad{background:radial-gradient(circle,rgba(255,77,94,.0) 30%,rgba(255,77,94,.6));opacity:1;transition:none}
 .toast{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);background:rgba(7,20,43,.86);backdrop-filter:blur(6px);border:1px solid var(--line);padding:6px 14px;border-radius:999px;font-weight:700;font-size:14px;max-width:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.camtools{position:absolute;top:10px;inset-inline:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.camtools{position:absolute;z-index:3;top:10px;inset-inline:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
 .camtools .g{display:flex;gap:8px;pointer-events:auto}
 .ib{width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(7,20,43,.7);backdrop-filter:blur(6px);display:grid;place-items:center}
 .ib svg{width:22px;height:22px}
 .ib.on{background:var(--orange);border-color:var(--orange);color:#1a0d00}
 .ib[hidden]{display:none!important}
-.start{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:12px;text-align:center;padding:20px;background:radial-gradient(ellipse at center,#0e2856,#040b19 75%)}
+.start{position:absolute;z-index:2;inset:0;display:grid;place-items:center;align-content:center;gap:12px;text-align:center;padding:20px;background:radial-gradient(ellipse at center,#0e2856,#040b19 75%)}
 .start .big{border:0;border-radius:18px;background:var(--orange);color:#1a0d00;font-weight:900;font-size:20px;padding:14px 28px;box-shadow:0 8px 30px rgba(255,138,0,.35)}
 .start p{margin:0;color:var(--mute);font-size:13px;max-width:34ch}
 .start .alt{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
@@ -179,10 +192,15 @@ dialog::backdrop{background:rgba(2,6,16,.7)}
       </div>
       <div class="g">
         <button class="ib" id="flipBtn" title="تبديل الكاميرا"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3l2-3h8l2 3h3v12H3z"/><path d="M9 13a3 3 0 0 1 5-2.2M15 13a3 3 0 0 1-5 2.2"/></svg></button>
+        <button class="ib" id="fullBtn" title="ملء الشاشة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
         <button class="ib" id="pauseBtn" title="إيقاف مؤقت"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
       </div>
     </div>
     <div class="toast" id="toast" hidden></div>
+    <div class="hud" aria-hidden="true">
+      <div class="hc"><small>مستلم</small><b id="hCnt">0</b></div>
+      <div class="hc hl" id="hLast"><div class="a" id="hA">وجّه على الوصل</div><div class="b" id="hB"></div><div class="c num" id="hC"></div></div>
+    </div>
     <div class="start" id="start">
       <button class="big" id="startBtn">ابدأ المسح</button>
       <p id="startMsg">وجّه الكاميرا على باركود الوصل. المسح متواصل بدون ضغط، وكل قراءة تطلع بصوت واهتزاز.</p>
@@ -274,7 +292,7 @@ const fmtDate = t => { const d = new Date(t); return d.getFullYear() + "-" + pad
 const nf = n => n.toLocaleString("en-US");
 
 /* ---------- settings (per-device convenience) ---------- */
-const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 2, res: "1080", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst" };
+const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 2, res: "720", eng: "auto", dynKey: "", dynMode: "ReadBarcodes_SpeedFirst" };
 const DYN_URL = "https://cdn.jsdelivr.net/npm/dynamsoft-barcode-reader-bundle@11.6.3200/dist/dbr.bundle.js";
 const DYN_COMPANY_KEY = "DLS2eyJoYW5kc2hha2VDb2RlIjoiMTA2NjQwNTc3LU1UQTJOalF3TlRjM0xYZGxZaTFVY21saGJGQnliMm8iLCJtYWluU2VydmVyVVJMIjoiaHR0cHM6Ly9tZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwib3JnYW5pemF0aW9uSUQiOiIxMDY2NDA1NzciLCJzdGFuZGJ5U2VydmVyVVJMIjoiaHR0cHM6Ly9zZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwiY2hlY2tDb2RlIjoxNDQ3MzMwNzY0fQ==";   // Al-Fuhood 30-day trial (2026-11-23)
 const DYN_TEST_KEY = DYN_COMPANY_KEY;
@@ -497,7 +515,7 @@ const MAX_ROWS = 300;
 let lastLat = 0;
 function bumpStats(ms, t0, added) {
   const list = bySess.get(cur.id);
-  const c = $("cnt"); c.textContent = nf(list.length);
+  const c = $("cnt"); c.textContent = nf(list.length); $("hCnt").textContent = nf(list.length);
   if (added && c.animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) c.animate([{ transform: "scale(1.12)", color: "#19d27c" }, { transform: "scale(1)" }], { duration: 250, easing: "ease-out" });
   $("cntAll").textContent = nf(index.size);
   $("dups").textContent = nf(dupCount);
@@ -517,6 +535,10 @@ function showLast(code, kind, tag, meta, info) {
   const l = $("last"); l.className = "last " + kind; $("card").className = "card " + kind;
   $("lastCode").textContent = code; $("lastTag").textContent = tag; $("lastMeta").textContent = meta;
   const na = orders.size ? "مو موجود بالكشف" : "يحتاج كشف الطلبات";
+  $("hLast").className = "hc hl " + kind;
+  $("hA").textContent = info && info.gov ? info.gov + (info.addr ? " · " + info.addr : "") : tag;
+  $("hB").textContent = info ? [fmtPrice(info.price), info.page].filter(Boolean).join(" · ") : (kind === "dup" ? "مكرر" : "");
+  $("hC").textContent = code;
   if (info === undefined) { for (const id of ["iGov", "iAddr", "iPrice", "iPage"]) setInfo(id, "", "—"); return; }
   setInfo("iGov", info && info.gov, na); setInfo("iAddr", info && info.addr, na);
   setInfo("iPrice", info && fmtPrice(info.price), na); setInfo("iPage", info && info.page, na);
@@ -573,7 +595,7 @@ function updSum() {
 function renderAll() {
   const list = bySess.get(cur.id) || [];
   updSum();
-  $("cnt").textContent = nf(list.length); $("cntAll").textContent = nf(index.size);
+  $("cnt").textContent = nf(list.length); $("hCnt").textContent = nf(list.length); $("cntAll").textContent = nf(index.size);
   $("dups").textContent = nf(dupCount); $("rate").textContent = "0"; $("rateMax").textContent = "0";
   renderList();
 }
@@ -672,6 +694,17 @@ function zxReady() {
     let n = 0; const iv = setInterval(() => { if (window.ZXing) { clearInterval(iv); go(); } else if (++n > 100) { clearInterval(iv); rej(new Error("zxing")); } }, 50);
   });
 }
+// Crop the frame to the aiming window and cap its width: the engine reads fewer pixels, so every frame decodes faster.
+let roiC, roiX;
+function roi(w, h) {
+  if (!roiC) { roiC = document.createElement("canvas"); roiX = roiC.getContext("2d", { willReadFrequently: true }); }
+  const sw = Math.round(w * 0.9), sh = Math.round(h * 0.7), sx = (w - sw) >> 1, sy = (h - sh) >> 1;
+  const sc = Math.min(1, 960 / Math.max(sw, sh));
+  const cw = Math.round(sw * sc), ch = Math.round(sh * sc);
+  if (roiC.width !== cw || roiC.height !== ch) { roiC.width = cw; roiC.height = ch; }
+  roiX.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
+  return roiC;
+}
 function zxDecodeSource(src, w, h, crop) {
   if (!canvas) { canvas = document.createElement("canvas"); ctx = canvas.getContext("2d", { willReadFrequently: true }); }
   let sx = 0, sy = 0, sw = w, sh = h;
@@ -687,13 +720,14 @@ function zxDecodeSource(src, w, h, crop) {
   catch (e) { return []; }
 }
 async function decodeFrame() {
-  if (engine === "dynamsoft" && dyn) return dynTexts(await dyn.capture(video, S.dynMode));
+  if (engine === "dynamsoft" && dyn) return dynTexts(await dyn.capture(roi(video.videoWidth, video.videoHeight), S.dynMode));
   if (engine === "native") { const r = await detector.detect(video); return r.map(x => x.rawValue); }
   return zxDecodeSource(video, video.videoWidth, video.videoHeight, true);
 }
 const rvfc = "requestVideoFrameCallback" in HTMLVideoElement.prototype;
 let busy = false;
 function schedule() { if (!running) return; rvfc ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); }
+document.addEventListener("keydown", e => { if (e.key === "Escape" && $("cam").classList.contains("full")) setFull(false); });
 async function tick() {
   if (!running) return;
   if (!busy && video.readyState >= 2 && video.videoWidth) {
@@ -735,6 +769,7 @@ async function startCam() {
     zoomLevel = 1; $("zoomLbl").textContent = "1x";
   } catch (e) {}
   $("start").hidden = true; $("cam").classList.remove("paused");
+  if ($("cam").dataset.wantFull) { delete $("cam").dataset.wantFull; setFull(true); }
   running = true; wake(); schedule();
 }
 function camFail(text) {
@@ -747,6 +782,15 @@ function stopCam() {
   stream = null; track = null; torchOn = false; $("torchBtn").classList.remove("on");
 }
 $("startBtn").addEventListener("click", startCam);
+function setFull(on) {
+  $("cam").classList.toggle("full", on); $("fullBtn").classList.toggle("on", on);
+  document.body.style.overflow = on ? "hidden" : "";
+  try { localStorage.setItem("fh.full", on ? "1" : ""); } catch (e) {}
+}
+$("fullBtn").addEventListener("click", async () => {
+  const on = !$("cam").classList.contains("full"); setFull(on);
+  if (on && !running) await startCam();
+});
 $("pauseBtn").addEventListener("click", () => {
   if (running) { stopCam(); $("cam").classList.add("paused"); $("start").hidden = false; $("startBtn").textContent = "استئناف المسح"; $("startMsg").textContent = "المسح موقوف مؤقتاً."; }
 });
@@ -920,6 +964,7 @@ $("wipeBtn").addEventListener("click", async e => {
   let id = null; try { id = localStorage.getItem("fh.cur"); } catch (e) {}
   const s = sessions.find(x => x.id === id) || sessions[0] || newSession();
   setSession(s); catStatus();
+  try { if (localStorage.getItem("fh.full")) $("fullBtn").classList.add("on"), $("cam").dataset.wantFull = "1"; } catch (e) {}
   $("engine").textContent = (S.eng === "zxing" ? "ZXing" : S.eng === "native" ? "Native" : "Dynamsoft") + " · تحميل " + nf(index.size) + " سجل بـ " + Math.round(performance.now() - t0) + "ms";
   if (!isSecureContext) warn("الكاميرا تحتاج رابط https.");
 })();
