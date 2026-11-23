@@ -1,0 +1,878 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style></head><body>
+<title>الفهود · استلام المخزن</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#07142b">
+<script>document.documentElement.lang="ar";document.documentElement.dir="rtl";</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: one-column phone scanner — camera on top, live counters, last scan, then the indexed log. Dark single theme (warehouse floor, camera UI). */
+:root{
+  --ink:#07142b;        /* deep Al-Fuhood navy, page ground */
+  --panel:#0d1f40;      /* raised surfaces */
+  --line:#1d3563;       /* hairlines */
+  --blue:#1f6fff;       /* brand blue */
+  --orange:#ff8a00;     /* brand orange, the accent */
+  --text:#eef3ff;
+  --mute:#8fa3c8;
+  --ok:#19d27c; --dup:#ffb020; --bad:#ff4d5e;
+  --f-ui:"Cairo",system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--ink);color:var(--text);direction:rtl}
+body{font-family:var(--f-ui);font-size:15px;line-height:1.5;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--ink)}
+.wrap{max-width:560px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px 28px;display:flex;flex-direction:column;gap:12px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+
+/* header */
+.top{display:flex;align-items:center;gap:10px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--ink);padding-block:6px}
+.mark{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--blue),#0b3fb0);display:grid;place-items:center;flex:none;box-shadow:inset 0 -3px 0 var(--orange)}
+.mark svg{width:26px;height:26px}
+.brand{min-width:0;flex:1}
+.brand b{display:block;font-size:18px;font-weight:900;line-height:1.1}
+.brand span{font-size:12px;color:var(--mute)}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip i{font-style:normal;color:var(--orange)}
+
+/* scanner */
+.cam{position:relative;border-radius:20px;overflow:hidden;background:#000;aspect-ratio:4/3.1;max-width:100%;border:1px solid var(--line);isolation:isolate}
+.cam video{width:100%;height:100%;object-fit:cover;display:block}
+.frame{position:absolute;inset:22% 9%;border-radius:14px;pointer-events:none;box-shadow:0 0 0 999px rgba(3,9,22,.48)}
+.frame::before,.frame::after{content:"";position:absolute;inset:0;border-radius:14px;border:3px solid transparent}
+.frame::before{border-color:var(--orange) transparent var(--orange) transparent;clip-path:polygon(0 0,18% 0,18% 100%,0 100%,0 0,100% 0,100% 100%,82% 100%,82% 0)}
+.frame::after{border-color:transparent var(--orange)}
+.laser{position:absolute;left:4%;right:4%;top:50%;height:2px;background:var(--orange);box-shadow:0 0 14px 2px var(--orange);opacity:.9;animation:sweep 1.6s ease-in-out infinite}
+@keyframes sweep{0%,100%{transform:translateY(-34px)}50%{transform:translateY(34px)}}
+.cam.paused .laser{animation:none;opacity:.25}
+.flash{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .35s}
+.flash.ok{background:radial-gradient(circle,rgba(25,210,124,.0) 30%,rgba(25,210,124,.55));opacity:1;transition:none}
+.flash.dup{background:radial-gradient(circle,rgba(255,176,32,.0) 30%,rgba(255,176,32,.6));opacity:1;transition:none}
+.flash.bad{background:radial-gradient(circle,rgba(255,77,94,.0) 30%,rgba(255,77,94,.6));opacity:1;transition:none}
+.toast{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);background:rgba(7,20,43,.86);backdrop-filter:blur(6px);border:1px solid var(--line);padding:6px 14px;border-radius:999px;font-weight:700;font-size:14px;max-width:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.camtools{position:absolute;top:10px;inset-inline:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.camtools .g{display:flex;gap:8px;pointer-events:auto}
+.ib{width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(7,20,43,.7);backdrop-filter:blur(6px);display:grid;place-items:center}
+.ib svg{width:22px;height:22px}
+.ib.on{background:var(--orange);border-color:var(--orange);color:#1a0d00}
+.ib[hidden]{display:none!important}
+.start{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:12px;text-align:center;padding:20px;background:radial-gradient(ellipse at center,#0e2856,#040b19 75%)}
+.start .big{border:0;border-radius:18px;background:var(--orange);color:#1a0d00;font-weight:900;font-size:20px;padding:14px 28px;box-shadow:0 8px 30px rgba(255,138,0,.35)}
+.start p{margin:0;color:var(--mute);font-size:13px;max-width:34ch}
+.start .alt{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.ghost{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:8px 14px;font-weight:700;font-size:14px}
+
+/* counters */
+.stats{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:8px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px 12px;min-width:0}
+.stat small{display:block;color:var(--mute);font-size:12px;font-weight:700;letter-spacing:.02em}
+.stat .v{font-size:26px;font-weight:600;line-height:1.15}
+.stat.main{background:linear-gradient(160deg,#123a86,#0d1f40 70%);border-color:#2a59b8}
+.stat.main .v{font-size:40px;color:#fff}
+.stat .s{font-size:11px;color:var(--mute)}
+.bump{animation:bump .25s ease-out}
+@keyframes bump{0%{transform:scale(1.12);color:var(--ok)}100%{transform:scale(1)}}
+
+/* last scan */
+.last{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px 12px;border-inline-start:5px solid var(--line);min-height:66px}
+.last.ok{border-inline-start-color:var(--ok)} .last.dup{border-inline-start-color:var(--dup)} .last.bad{border-inline-start-color:var(--bad)}
+.last .code{font-size:22px;font-weight:600;word-break:break-all;min-width:0;flex:1;text-align:start}
+.last .tag{flex:none;font-size:13px;font-weight:900;padding:4px 10px;border-radius:999px;background:var(--line)}
+.last.ok .tag{background:rgba(25,210,124,.15);color:var(--ok)}
+.last.dup .tag{background:rgba(255,176,32,.15);color:var(--dup)}
+.last.bad .tag{background:rgba(255,77,94,.15);color:var(--bad)}
+.last .meta{font-size:12px;color:var(--mute)}
+.lastbox{min-width:0;flex:1;display:flex;flex-direction:column}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;border-top:5px solid var(--line)}
+.card.ok{border-top-color:var(--ok)} .card.dup{border-top-color:var(--dup)} .card.bad{border-top-color:var(--bad)} .card.unk{border-top-color:var(--blue)}
+.card .last{border:0;border-radius:0;background:transparent;border-bottom:1px solid var(--line)}
+.info{margin:0;display:flex;flex-direction:column}
+.info div{display:grid;grid-template-columns:7.5em 1fr;gap:10px;align-items:baseline;padding:9px 14px;border-top:1px solid rgba(29,53,99,.6)}
+.info div:first-child{border-top:0}
+.info dt{color:var(--mute);font-size:13px;font-weight:700}
+.info dd{margin:0;text-align:right;font-size:19px;font-weight:900;line-height:1.35;min-width:0;overflow-wrap:anywhere}
+.info dd.gov{font-size:24px;color:#fff}
+.info dd.price{color:var(--orange);font-size:22px}
+.info dd.na{color:#5f769f;font-weight:500;font-size:15px}
+.cat{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mute);padding:8px 14px;border-top:1px solid var(--line);background:#0a1934}
+.cat b{color:var(--text)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dup);flex:none}.dot.on{background:var(--ok)}
+.log .g{display:block;font-size:12px;color:var(--mute);font-family:var(--f-ui);font-weight:700;text-align:right;direction:rtl}
+.log .g em{font-style:normal;color:var(--orange)}
+.last.unk{border-inline-start-color:var(--blue)} .last.unk .tag{background:rgba(31,111,255,.18);color:#8db4ff}
+
+/* entry */
+.entry{display:flex;gap:8px}
+.entry input{flex:1;min-width:0;height:50px;border-radius:14px;border:1px solid var(--line);background:#081631;color:var(--text);padding:0 14px;font-family:var(--f-num);font-size:18px;direction:ltr;text-align:left}
+.entry input::placeholder{font-family:var(--f-ui);direction:rtl;text-align:right;color:#5f769f;font-size:15px}
+.entry button{height:50px;border-radius:14px;border:0;background:var(--blue);font-weight:900;padding:0 18px}
+
+/* list */
+.listhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.listhead h2{margin:0;font-size:16px;font-weight:900;flex:1;min-width:8ch}
+.search{height:40px;border-radius:12px;border:1px solid var(--line);background:#081631;color:var(--text);padding:0 12px;font:inherit;width:min(220px,100%)}
+.log{list-style:none;margin:0;padding:0;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.log li{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid var(--line)}
+.log li:first-child{border-top:0}
+.log li.new{animation:rowin .5s ease-out}
+@keyframes rowin{from{background:rgba(25,210,124,.18)}to{background:transparent}}
+.log .n{color:var(--mute);font-size:12px;min-width:3ch}
+.log .c{font-size:16px;font-weight:600;word-break:break-all;text-align:left}
+.log .t{font-size:12px;color:var(--mute)}
+.log .x{border:0;background:transparent;color:var(--mute);width:34px;height:34px;border-radius:10px}
+.log .x:hover{background:var(--line);color:var(--bad)}
+.log .empty{display:block;padding:22px 14px;text-align:center;color:var(--mute);grid-template-columns:none}
+.more{text-align:center;color:var(--mute);font-size:12px}
+
+/* actions */
+.actions{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.act{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:12px;font-weight:900;display:flex;align-items:center;justify-content:center;gap:8px}
+.act svg{width:20px;height:20px}
+.act.pri{background:var(--orange);border-color:var(--orange);color:#1a0d00}
+.foot{font-size:12px;color:var(--mute);text-align:center;line-height:1.7}
+.foot .num{color:var(--text)}
+.warn{background:rgba(255,176,32,.1);border:1px solid rgba(255,176,32,.35);color:#ffd48a;border-radius:12px;padding:8px 12px;font-size:13px}
+
+/* sheets */
+dialog{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:20px;padding:0;width:min(520px,calc(100vw - 24px));max-height:85vh}
+dialog::backdrop{background:rgba(2,6,16,.7)}
+.sheet{padding:18px;display:flex;flex-direction:column;gap:12px;overflow:auto;max-height:85vh}
+.sheet h3{margin:0;font-size:18px;font-weight:900}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
+.row label{font-weight:700}
+.row small{display:block;color:var(--mute);font-weight:500;font-size:12px}
+.row input[type=number],.row input[type=text],.row select{height:40px;border-radius:10px;border:1px solid var(--line);background:#081631;color:var(--text);padding:0 10px;font:inherit;width:120px}
+.row input[type=checkbox]{width:22px;height:22px;accent-color:var(--orange)}
+.sess{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:12px;background:#081631}
+.sess.cur{border-color:var(--orange)}
+.sess div{flex:1;min-width:0}
+.sess b{display:block}
+.sess span{font-size:12px;color:var(--mute)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btns button{flex:1}
+.danger{color:var(--bad)}
+@media (prefers-reduced-motion:reduce){.laser{animation:none}.bump,.log li.new{animation:none}}
+@media (max-width:380px){.stat.main .v{font-size:32px}.stat .v{font-size:21px}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" fill="none"><path d="M5 20c3-7 9-11 17-11l5-3-1 6c1 2 1 5-1 7l-4 1-2 5h-3l1-4c-4 1-8 1-12-1z" fill="#fff"/><circle cx="22.5" cy="12" r="1.3" fill="#ff8a00"/><path d="M3 24h8M2 27.5h6" stroke="#ff8a00" stroke-width="2" stroke-linecap="round"/></svg>
+    </div>
+    <div class="brand"><b>الفهود</b><span>استلام الطلبات بالمخزن</span></div>
+    <button class="chip" id="sessBtn" title="الدفعات">دفعة: <i id="sessName">—</i></button>
+  </header>
+
+  <section class="cam paused" id="cam" aria-label="الكاميرا">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="frame"><div class="laser"></div></div>
+    <div class="flash" id="flash"></div>
+    <div class="camtools">
+      <div class="g">
+        <button class="ib" id="torchBtn" hidden title="الضوء"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></button>
+        <button class="ib" id="zoomBtn" hidden title="تقريب"><span class="num" id="zoomLbl" style="font-weight:700">1x</span></button>
+      </div>
+      <div class="g">
+        <button class="ib" id="flipBtn" title="تبديل الكاميرا"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3l2-3h8l2 3h3v12H3z"/><path d="M9 13a3 3 0 0 1 5-2.2M15 13a3 3 0 0 1-5 2.2"/></svg></button>
+        <button class="ib" id="pauseBtn" title="إيقاف مؤقت"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+      </div>
+    </div>
+    <div class="toast" id="toast" hidden></div>
+    <div class="start" id="start">
+      <button class="big" id="startBtn">ابدأ المسح</button>
+      <p id="startMsg">وجّه الكاميرا على باركود الوصل. المسح متواصل بدون ضغط، وكل قراءة تطلع بصوت واهتزاز.</p>
+      <div class="alt">
+        <button class="ghost" id="photoBtn">صوّر باركود</button>
+        <button class="ghost" id="hwBtn">قارئ بلوتوث / يدوي</button>
+      </div>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
+    </div>
+  </section>
+
+  <section class="stats" aria-live="polite">
+    <div class="stat main"><small>مستلم بهاي الدفعة</small><div class="v num" id="cnt">0</div><div class="s">المبالغ: <span class="num" id="sum">0</span> د.ع</div></div>
+    <div class="stat"><small>بالدقيقة</small><div class="v num" id="rate">0</div><div class="s">أعلى: <span class="num" id="rateMax">0</span></div></div>
+    <div class="stat"><small>مكرر</small><div class="v num" id="dups" style="color:var(--dup)">0</div><div class="s">زمن: <span class="num" id="lat">–</span></div></div>
+  </section>
+
+  <section class="card" id="card" aria-live="polite">
+    <div class="last" id="last">
+      <div class="lastbox"><div class="code num" id="lastCode">بانتظار أول قراءة</div><div class="meta" id="lastMeta">رقم الطلب يظهر هنا لحظة القراءة</div></div>
+      <span class="tag" id="lastTag">جاهز</span>
+    </div>
+    <dl class="info">
+      <div><dt>المحافظة</dt><dd id="iGov" class="gov">—</dd></div>
+      <div><dt>العنوان</dt><dd id="iAddr">—</dd></div>
+      <div><dt>السعر</dt><dd id="iPrice" class="price">—</dd></div>
+      <div><dt>اسم البيج</dt><dd id="iPage">—</dd></div>
+    </dl>
+    <div class="cat"><span class="dot" id="catDot"></span><span id="catTxt">ما مرفوع كشف طلبات بعد. ارفع كشف جني (Excel) حتى تطلع التفاصيل.</span></div>
+  </section>
+
+  <form class="entry" id="entry" autocomplete="off">
+    <input id="manual" inputmode="text" enterkeyhint="done" placeholder="امسح بقارئ بلوتوث أو اكتب رقم الشحنة" aria-label="رقم الشحنة">
+    <button type="submit">إضافة</button>
+  </form>
+
+  <div class="warn" id="warn" hidden></div>
+
+  <div class="listhead">
+    <h2>سجل الدفعة</h2>
+    <input class="search" id="search" type="search" placeholder="بحث فوري برقم الشحنة" aria-label="بحث">
+  </div>
+  <ul class="log" id="log"><li class="empty">ما كو قراءات بعد. ابدأ المسح وكل شحنة تنضاف هنا فوراً.</li></ul>
+  <div class="more" id="more" hidden></div>
+
+  <div class="actions">
+    <button class="act pri" id="xlsxBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></svg>تصدير Excel</button>
+    <button class="act" id="catBtn">رفع كشف الطلبات</button>
+    <button class="act" id="csvBtn">تصدير CSV</button>
+    <button class="act" id="undoBtn">تراجع عن آخر قراءة</button>
+    <button class="act" id="setBtn">الإعدادات</button>
+  </div>
+  <input type="file" id="catInput" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
+  <p class="foot">كل القراءات محفوظة على هذا الجهاز ومفهرسة بالرقم. الكلي بالمخزن: <span class="num" id="cntAll">0</span> طلب.<br>محرك القراءة: <span class="num" id="engine">–</span> · الربط مع جني بلس: <span id="apiState">بانتظار الموافقة</span></p>
+</div>
+
+<dialog id="sessDlg"><div class="sheet">
+  <h3>دفعات الاستلام</h3>
+  <div class="btns"><button class="act pri" id="newSessBtn">دفعة جديدة</button></div>
+  <div id="sessList" style="display:flex;flex-direction:column;gap:8px"></div>
+  <div class="btns"><button class="act" data-close>إغلاق</button></div>
+</div></dialog>
+
+<dialog id="setDlg"><div class="sheet">
+  <h3>الإعدادات</h3>
+  <div class="row"><label for="sBeep">الصوت</label><input type="checkbox" id="sBeep"></div>
+  <div class="row"><label for="sVib">الاهتزاز</label><input type="checkbox" id="sVib"></div>
+  <div class="row"><label for="sMin">أقل طول للرقم<small>يرفض القراءات القصيرة الغلط</small></label><input type="number" id="sMin" min="1" max="40"></div>
+  <div class="row"><label for="sPat">نمط الرقم (اختياري)<small>مثال: ^[0-9]{6,}$ للأرقام فقط</small></label><input type="text" id="sPat" dir="ltr" placeholder="regex"></div>
+  <div class="row"><label for="sDbl">تأكيد مزدوج<small>يقرأ الباركود مرتين قبل القبول، أدق بالضوء الضعيف</small></label><input type="checkbox" id="sDbl"></div>
+  <div class="row"><label for="sCool">مهلة نفس الباركود (ثانية)<small>ما يعيد قراءة الوصل اللي بعده قدام الكاميرا</small></label><input type="number" id="sCool" min="0.5" max="10" step="0.5"></div>
+  <div class="row"><label for="sRes">دقة الكاميرا</label><select id="sRes"><option value="720">720p سريع</option><option value="1080">1080p أدق</option></select></div>
+  <div class="row"><label>مسح كل بيانات الجهاز<small>يحذف كل الدفعات والقراءات من هذا الموبايل</small></label><button class="ghost danger" id="wipeBtn">حذف الكل</button></div>
+  <div class="btns"><button class="act" data-close>تم</button></div>
+</div></dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js" defer></script>
+<script>
+(() => {
+"use strict";
+const $ = id => document.getElementById(id);
+const now = () => Date.now();
+const pad = n => String(n).padStart(2, "0");
+const fmtTime = t => { const d = new Date(t); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
+const fmtDate = t => { const d = new Date(t); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); };
+const nf = n => n.toLocaleString("en-US");
+
+/* ---------- settings (per-device convenience) ---------- */
+const DEF = { beep: true, vib: true, min: 4, pat: "", dbl: null, cool: 2, res: "1080" };
+let S = { ...DEF };
+try { Object.assign(S, JSON.parse(localStorage.getItem("fh.settings") || "{}")); } catch (e) {}
+const saveS = () => { try { localStorage.setItem("fh.settings", JSON.stringify(S)); } catch (e) {} };
+let patRe = null;
+const compilePat = () => { try { patRe = S.pat ? new RegExp(S.pat) : null; } catch (e) { patRe = null; } };
+compilePat();
+
+/* ---------- indexed store: in-memory Map (O(1)) + IndexedDB (batched writes) ---------- */
+const index = new Map();        // code -> record   (global dedup across all batches)
+const orders = new Map();       // code -> {gov, addr, price, page}  (imported Jenni order sheet)
+let ordersMeta = null;          // {file, count, at}
+const bySess = new Map();       // sessionId -> array of records in scan order
+let sessions = [];              // {id,name,created}
+let cur = null;                 // current session
+let idb = null, persistent = false;
+const queue = []; const delQueue = []; let flushT = 0;
+
+function openDB() {
+  return new Promise(res => {
+    let req;
+    try { req = indexedDB.open("fuhood-receiving", 2); } catch (e) { return res(null); }
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains("scans")) {
+        const s = db.createObjectStore("scans", { keyPath: "code" });
+        s.createIndex("session", "session"); s.createIndex("t", "t");
+      }
+      if (!db.objectStoreNames.contains("sessions")) db.createObjectStore("sessions", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("orders")) db.createObjectStore("orders", { keyPath: "code" });
+    };
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => res(null);
+    req.onblocked = () => res(null);
+    setTimeout(() => res(null), 4000);
+  });
+}
+function getAll(store) {
+  return new Promise(res => {
+    try { const r = idb.transaction(store).objectStore(store).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res([]); }
+    catch (e) { res([]); }
+  });
+}
+function flushSoon() { if (!flushT) flushT = setTimeout(flush, 200); }
+function flush() {
+  flushT = 0;
+  if (!idb || (!queue.length && !delQueue.length)) return;
+  const put = queue.splice(0), del = delQueue.splice(0);
+  try {
+    const tx = idb.transaction(["scans", "sessions"], "readwrite");
+    const st = tx.objectStore("scans"), ss = tx.objectStore("sessions");
+    for (const r of put) r.kind === "session" ? ss.put(r.data) : st.put(r);
+    for (const d of del) d.kind === "session" ? ss.delete(d.id) : st.delete(d.code);
+    tx.onerror = () => { queue.unshift(...put); delQueue.unshift(...del); warn("تعذّر الحفظ على الجهاز، راح نعيد المحاولة."); flushSoon(); };
+  } catch (e) { queue.unshift(...put); delQueue.unshift(...del); }
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) { clearTimeout(flushT); flush(); } });
+window.addEventListener("pagehide", () => { clearTimeout(flushT); flush(); });
+
+function newSession(name) {
+  const t = now();
+  const s = { id: "s" + t.toString(36), name: name || ("استلام " + fmtDate(t) + " " + pad(new Date(t).getHours()) + ":" + pad(new Date(t).getMinutes())), created: t };
+  sessions.unshift(s); bySess.set(s.id, []);
+  queue.push({ kind: "session", data: s }); flushSoon();
+  return s;
+}
+function setSession(s) {
+  cur = s; try { localStorage.setItem("fh.cur", s.id); } catch (e) {}
+  $("sessName").textContent = s.name;
+  dupCount = 0; rateTimes.length = 0; rateMax = 0;
+  renderAll();
+}
+
+/* ---------- feedback ---------- */
+let ac = null;
+function audio() { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === "suspended") ac.resume(); return ac; }
+function tone(freq, dur, when = 0, type = "square", vol = 0.18) {
+  const a = ac; if (!a) return;
+  const o = a.createOscillator(), g = a.createGain(), t = a.currentTime + when;
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+function feedback(kind) {
+  if (S.beep && ac) {
+    if (kind === "ok") tone(2200, 0.07);
+    else if (kind === "dup") { tone(520, 0.09, 0, "sawtooth", 0.16); tone(520, 0.09, 0.13, "sawtooth", 0.16); }
+    else tone(180, 0.25, 0, "sawtooth", 0.2);
+  }
+  if (S.vib && navigator.vibrate) navigator.vibrate(kind === "ok" ? 35 : kind === "dup" ? [70, 50, 70] : [200]);
+  const f = $("flash"); f.className = "flash " + kind; requestAnimationFrame(() => requestAnimationFrame(() => { f.className = "flash"; }));
+}
+let toastT = 0;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 1600); }
+function warn(msg) { const w = $("warn"); w.textContent = msg; w.hidden = !msg; }
+
+/* ---------- core: accept a code ---------- */
+const lastSeen = new Map();     // code -> last time seen by camera (suppresses re-reads of the same label)
+const pending = new Map();      // code -> first sighting (double-check)
+let dupCount = 0; const rateTimes = []; let rateMax = 0;
+
+function clean(raw) { return String(raw || "").replace(/[\u0000-\u001f‎‏]/g, "").trim(); }
+
+function accept(raw, src, ms) {
+  const t0 = performance.now();
+  const code = clean(raw);
+  if (!code) return;
+  const tNow = now();
+  if (src === "cam") {
+    const ls = lastSeen.get(code);
+    lastSeen.set(code, tNow);
+    if (ls && tNow - ls < S.cool * 1000) return;              // same label still in view
+    if (dblOn()) {
+      const p = pending.get(code);
+      if (!p || tNow - p > 900) { pending.set(code, tNow); lastSeen.delete(code); return; }
+      pending.delete(code);
+    }
+  }
+  if (code.length < S.min || (patRe && !patRe.test(code))) {
+    showLast(code, "bad", "رقم غير صالح", "ما يطابق شروط الرقم بالإعدادات"); feedback("bad"); return;
+  }
+  const hit = index.get(code);
+  if (hit) {
+    dupCount++;
+    const s = sessions.find(x => x.id === hit.session);
+    const where = hit.session === cur.id ? "بنفس الدفعة" : ("بدفعة " + (s ? s.name : "سابقة"));
+    showLast(code, "dup", "مكرر", "مستلم سابقاً " + where + " الساعة " + fmtTime(hit.t), hit.info || findOrder(code));
+    feedback("dup"); toast("مكرر: " + code); bumpStats(ms, t0); return;
+  }
+  const info = findOrder(code);
+  const rec = { code, session: cur.id, t: tNow, src, status: "received", info };
+  index.set(code, rec); bySess.get(cur.id).push(rec);
+  queue.push(rec); flushSoon();
+  rateTimes.push(tNow);
+  feedback("ok");
+  const unknown = !info && orders.size > 0;
+  showLast(code, unknown ? "unk" : "ok", unknown ? "مستلم · مو بالكشف" : "تم الاستلام", "رقم " + nf(bySess.get(cur.id).length) + " · " + fmtTime(tNow) + srcLabel(src), info);
+  addRow(rec, bySess.get(cur.id).length, true);
+  bumpStats(ms, t0, true);
+  lookupLater(rec);
+}
+const srcLabel = s => s === "cam" ? "" : s === "hw" ? " · قارئ" : s === "photo" ? " · صورة" : " · يدوي";
+function dblOn() { return S.dbl === null ? engine === "zxing" : !!S.dbl; }
+
+/* ---------- order sheet (Jenni export) : indexed lookup ---------- */
+function findOrder(code) {
+  let o = orders.get(code);
+  if (!o && /^\d+$/.test(code)) o = orders.get(code.replace(/^0+/, ""));
+  if (!o) { const d = code.replace(/\D/g, ""); if (d && d !== code) o = orders.get(d); }
+  return o || null;
+}
+const norm = h => String(h == null ? "" : h).replace(/[\s_\-:.\u200f\u200e]/g, "").toLowerCase().replace(/[أإآ]/g, "ا").replace(/ة/g, "ه");
+const COLS = {
+  code: ["رقمالطلب", "رقمالوصل", "رقمالشحنه", "رقمالشحنة", "الرقم", "الكود", "باركود", "orderid", "ordernumber", "orderno", "order", "code", "barcode", "receipt", "receiptno", "shipment", "tracking", "id", "رقم"],
+  gov: ["المحافظه", "محافظه", "المدينه", "governorate", "province", "city", "state"],
+  addr: ["العنوان", "عنوان", "عنوانالزبون", "المنطقه", "address", "area", "region", "location"],
+  price: ["المبلغالكلي", "المبلغ", "السعر", "مبلغ", "سعر", "الكلفه", "الاجمالي", "totalprice", "total", "price", "amount", "cod"],
+  page: ["اسمالبيج", "البيج", "بيج", "المرسل", "مرسل", "الصفحه", "اسمالصفحه", "التاجر", "المتجر", "اسمالمتجر", "اسمالتاجر", "sender", "merchant", "store", "page", "shop", "client", "customer"]
+};
+function mapHeader(row) {
+  const h = row.map(norm), m = {};
+  for (const k in COLS) {
+    let idx = -1;
+    for (const c of COLS[k]) { idx = h.indexOf(norm(c)); if (idx >= 0) break; }
+    if (idx < 0) for (const c of COLS[k]) { if (c.length < 4) continue; idx = h.findIndex(x => x.includes(norm(c))); if (idx >= 0) break; }
+    if (idx >= 0 && !Object.values(m).includes(idx)) m[k] = idx;
+  }
+  return m;
+}
+const toPrice = v => { if (typeof v === "number") return v; const d = String(v || "").replace(/[٠-٩]/g, c => "٠١٢٣٤٥٦٧٨٩".indexOf(c)).replace(/[^\d.]/g, ""); return d ? +d : null; };
+const toCode = v => { if (typeof v === "number") return Number.isInteger(v) ? v.toFixed(0) : String(v); return clean(v).replace(/[٠-٩]/g, c => "٠١٢٣٤٥٦٧٨٩".indexOf(c)); };
+async function importSheet(file) {
+  const t0 = performance.now();
+  $("catTxt").textContent = "جاري قراءة الكشف…";
+  const X = await loadXLSX();
+  const buf = await file.arrayBuffer();
+  const wb = X.read(buf, { type: "array", raw: false, cellText: true, codepage: 65001 });
+  let added = 0, mapUsed = null;
+  const put = [];
+  for (const name of wb.SheetNames) {
+    const rows = X.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: "" });
+    let hr = -1, m = null;
+    for (let i = 0; i < Math.min(rows.length, 15); i++) { const mm = mapHeader(rows[i]); if (mm.code != null && Object.keys(mm).length >= 2) { hr = i; m = mm; break; } }
+    if (hr < 0) continue;
+    mapUsed = m;
+    for (let i = hr + 1; i < rows.length; i++) {
+      const r = rows[i]; const code = toCode(r[m.code]); if (!code) continue;
+      const o = { code, gov: m.gov != null ? clean(r[m.gov]) : "", addr: m.addr != null ? clean(r[m.addr]) : "", price: m.price != null ? toPrice(r[m.price]) : null, page: m.page != null ? clean(r[m.page]) : "" };
+      orders.set(code, o); put.push(o); added++;
+    }
+  }
+  if (!added) { catStatus(); toast("ما لگينا عمود رقم الطلب بالكشف"); showLast("—", "bad", "الكشف ما انقرأ", "لازم يكون بيه عمود «رقم الطلب» وعمود واحد على الأقل من المحافظة أو العنوان أو المبلغ أو المرسل"); return; }
+  ordersMeta = { file: file.name, count: orders.size, at: now() };
+  try { localStorage.setItem("fh.ordersMeta", JSON.stringify(ordersMeta)); } catch (e) {}
+  if (idb) {
+    try { const tx = idb.transaction("orders", "readwrite"); const st = tx.objectStore("orders"); for (const o of put) st.put(o); } catch (e) {}
+  }
+  // enrich scans already received from this sheet
+  for (const r of index.values()) if (!r.info) { const o = orders.get(r.code); if (o) { r.info = o; queue.push(r); } }
+  flushSoon(); renderAll(); catStatus();
+  const miss = ["gov", "addr", "price", "page"].filter(k => mapUsed[k] == null).map(k => ({ gov: "المحافظة", addr: "العنوان", price: "السعر", page: "البيج" })[k]);
+  toast("انضاف " + nf(added) + " طلب بـ " + Math.round(performance.now() - t0) + "ms" + (miss.length ? " · ناقص: " + miss.join("، ") : ""));
+}
+function catStatus() {
+  const on = orders.size > 0; $("catDot").classList.toggle("on", on);
+  $("catTxt").innerHTML = on ? "" : "ما مرفوع كشف طلبات بعد. ارفع كشف جني (Excel) حتى تطلع التفاصيل.";
+  if (on) { const b = document.createElement("b"); b.className = "num"; b.textContent = nf(orders.size); $("catTxt").append("الكشف مفهرس: ", b, " طلب" + (ordersMeta ? " · " + ordersMeta.file + " · " + fmtDate(ordersMeta.at) : "")); }
+}
+$("catBtn").addEventListener("click", () => $("catInput").click());
+$("catInput").addEventListener("change", async e => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; try { await importSheet(f); } catch (err) { catStatus(); toast("ما گدرنا نقرأ الملف"); } });
+
+/* ---------- Jenni Plus hook (enabled once API access is approved) ---------- */
+const JENNI = { enabled: false, base: "https://sys.fuhood.com/api/v2" };
+function lookupLater(rec) { if (!JENNI.enabled || rec.info) return; /* later: POST /shipments/query {code} -> rec.info = {gov, addr, price, page}; queue.push(rec); flushSoon(); refresh card */ }
+
+/* ---------- rendering ---------- */
+const MAX_ROWS = 300;
+let lastLat = 0;
+function bumpStats(ms, t0, added) {
+  const list = bySess.get(cur.id);
+  const c = $("cnt"); c.textContent = nf(list.length);
+  if (added && c.animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) c.animate([{ transform: "scale(1.12)", color: "#19d27c" }, { transform: "scale(1)" }], { duration: 250, easing: "ease-out" });
+  $("cntAll").textContent = nf(index.size);
+  $("dups").textContent = nf(dupCount);
+  if (added) { const i = list[list.length - 1].info; if (i && i.price) sessSum += +i.price; $("sum").textContent = nf(sessSum); }
+  const cut = now() - 60000; while (rateTimes.length && rateTimes[0] < cut) rateTimes.shift();
+  const r = rateTimes.length; if (r > rateMax) rateMax = r;
+  $("rate").textContent = nf(r); $("rateMax").textContent = nf(rateMax);
+  const proc = performance.now() - t0;
+  lastLat = (ms || 0) + proc;
+  $("lat").textContent = lastLat < 1 ? lastLat.toFixed(2) + "ms" : Math.round(lastLat) + "ms";
+}
+setInterval(() => { if (!cur) return; const cut = now() - 60000; while (rateTimes.length && rateTimes[0] < cut) rateTimes.shift(); $("rate").textContent = nf(rateTimes.length); }, 2000);
+
+const fmtPrice = p => p == null || p === "" ? "" : nf(+p) + " د.ع";
+function setInfo(id, v, fallback) { const el = $(id); el.textContent = v || fallback; el.classList.toggle("na", !v); }
+function showLast(code, kind, tag, meta, info) {
+  const l = $("last"); l.className = "last " + kind; $("card").className = "card " + kind;
+  $("lastCode").textContent = code; $("lastTag").textContent = tag; $("lastMeta").textContent = meta;
+  const na = orders.size ? "مو موجود بالكشف" : "يحتاج كشف الطلبات";
+  if (info === undefined) { for (const id of ["iGov", "iAddr", "iPrice", "iPage"]) setInfo(id, "", "—"); return; }
+  setInfo("iGov", info && info.gov, na); setInfo("iAddr", info && info.addr, na);
+  setInfo("iPrice", info && fmtPrice(info.price), na); setInfo("iPage", info && info.page, na);
+}
+function rowEl(rec, n, fresh) {
+  const li = document.createElement("li"); if (fresh) li.className = "new";
+  li.dataset.code = rec.code;
+  li.innerHTML = '<span class="n num"></span><span class="c num"></span><span class="t num"></span><button class="x" title="حذف" aria-label="حذف">✕</button>';
+  li.children[0].textContent = n; li.children[1].textContent = rec.code; li.children[2].textContent = fmtTime(rec.t);
+  const inf = rec.info || findOrder(rec.code);
+  if (inf && (inf.gov || inf.price != null || inf.page)) {
+    const g = document.createElement("span"); g.className = "g";
+    g.textContent = [inf.gov, inf.page].filter(Boolean).join(" · ") + (inf.price != null ? " · " : "");
+    if (inf.price != null) { const em = document.createElement("em"); em.textContent = fmtPrice(inf.price); g.append(em); }
+    li.children[1].append(g);
+  }
+  return li;
+}
+function addRow(rec, n, fresh) {
+  const log = $("log");
+  if ($("search").value.trim()) return renderList();
+  const e = log.querySelector(".empty"); if (e) e.remove();
+  log.prepend(rowEl(rec, n, fresh));
+  while (log.children.length > MAX_ROWS) log.lastElementChild.remove();
+  moreNote();
+}
+function moreNote() {
+  const total = bySess.get(cur.id).length, m = $("more");
+  m.hidden = total <= MAX_ROWS; m.textContent = "يعرض آخر " + nf(MAX_ROWS) + " من " + nf(total) + ". التصدير يشمل الكل.";
+}
+function renderList() {
+  const log = $("log"); log.textContent = "";
+  const list = bySess.get(cur.id) || [];
+  const q = $("search").value.trim();
+  const frag = document.createDocumentFragment();
+  if (q) {
+    const exact = index.get(q);
+    const res = [];
+    if (exact) res.push(exact);
+    for (let i = list.length - 1; i >= 0 && res.length < 100; i--) if (list[i].code.includes(q) && list[i] !== exact) res.push(list[i]);
+    if (!res.length) { log.innerHTML = '<li class="empty"></li>'; log.firstChild.textContent = "ما لگينا رقم يطابق " + q; $("more").hidden = true; return; }
+    for (const r of res) { const li = rowEl(r, r.session === cur.id ? list.indexOf(r) + 1 : "—"); if (r.session !== cur.id) { const s = sessions.find(x => x.id === r.session); li.children[2].textContent = (s ? s.name : "") + " " + fmtTime(r.t); } frag.append(li); }
+    log.append(frag); $("more").hidden = true; return;
+  }
+  if (!list.length) { log.innerHTML = '<li class="empty">ما كو قراءات بعد. ابدأ المسح وكل شحنة تنضاف هنا فوراً.</li>'; $("more").hidden = true; return; }
+  for (let i = list.length - 1, k = 0; i >= 0 && k < MAX_ROWS; i--, k++) frag.append(rowEl(list[i], i + 1));
+  log.append(frag); moreNote();
+}
+let sessSum = 0;
+function updSum() {
+  let t = 0; for (const r of bySess.get(cur.id) || []) { const i = r.info || findOrder(r.code); if (i && i.price) t += +i.price; }
+  sessSum = t; $("sum").textContent = nf(t);
+}
+function renderAll() {
+  const list = bySess.get(cur.id) || [];
+  updSum();
+  $("cnt").textContent = nf(list.length); $("cntAll").textContent = nf(index.size);
+  $("dups").textContent = nf(dupCount); $("rate").textContent = "0"; $("rateMax").textContent = "0";
+  renderList();
+}
+let searchT = 0;
+$("search").addEventListener("input", () => { clearTimeout(searchT); searchT = setTimeout(renderList, 60); });
+
+function removeCode(code) {
+  const rec = index.get(code); if (!rec) return;
+  index.delete(code);
+  const arr = bySess.get(rec.session); if (arr) { const i = arr.lastIndexOf(rec); if (i >= 0) arr.splice(i, 1); }
+  delQueue.push({ code }); flushSoon();
+  renderAll();
+}
+$("log").addEventListener("click", e => {
+  const b = e.target.closest(".x"); if (!b) return;
+  const li = b.closest("li");
+  if (b.dataset.armed) { removeCode(li.dataset.code); return; }
+  b.dataset.armed = "1"; b.textContent = "حذف؟"; b.style.width = "auto"; b.style.color = "var(--bad)";
+  setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = "✕"; b.style.width = ""; b.style.color = ""; } }, 2500);
+});
+$("undoBtn").addEventListener("click", () => {
+  const list = bySess.get(cur.id); if (!list.length) return;
+  const r = list[list.length - 1]; removeCode(r.code);
+  showLast(r.code, "bad", "تم التراجع", "انحذفت آخر قراءة من الدفعة");
+});
+
+/* ---------- camera + decoding ---------- */
+const video = $("video");
+let stream = null, track = null, running = false, engine = "–", detector = null, zx = null;
+let facing = "environment", torchOn = false, zoomCaps = null, zoomLevel = 1;
+let canvas, ctx;
+
+async function pickEngine() {
+  if ("BarcodeDetector" in window) {
+    try {
+      const want = ["code_128", "code_39", "code_93", "codabar", "ean_13", "ean_8", "itf", "upc_a", "upc_e", "qr_code", "data_matrix", "pdf417"];
+      const have = await BarcodeDetector.getSupportedFormats();
+      const fm = want.filter(f => have.includes(f));
+      if (fm.length) { detector = new BarcodeDetector({ formats: fm }); engine = "native"; $("engine").textContent = "Native · " + fm.length + " formats"; return; }
+    } catch (e) {}
+  }
+  await zxReady();
+  engine = "zxing"; $("engine").textContent = "ZXing";
+}
+function zxReady() {
+  return new Promise((res, rej) => {
+    const go = () => {
+      const Z = window.ZXing;
+      const hints = new Map();
+      const F = Z.BarcodeFormat;
+      hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [F.CODE_128, F.CODE_39, F.CODE_93, F.CODABAR, F.EAN_13, F.EAN_8, F.ITF, F.UPC_A, F.UPC_E, F.QR_CODE, F.DATA_MATRIX]);
+      zx = { Z, reader: new Z.MultiFormatReader(), hints, flip: 0 };
+      zx.reader.setHints(hints);
+      res();
+    };
+    if (window.ZXing) return go();
+    let n = 0; const iv = setInterval(() => { if (window.ZXing) { clearInterval(iv); go(); } else if (++n > 100) { clearInterval(iv); rej(new Error("zxing")); } }, 50);
+  });
+}
+function zxDecodeSource(src, w, h, crop) {
+  if (!canvas) { canvas = document.createElement("canvas"); ctx = canvas.getContext("2d", { willReadFrequently: true }); }
+  let sx = 0, sy = 0, sw = w, sh = h;
+  if (crop) { sw = Math.round(w * 0.86); sh = Math.round(h * 0.6); sx = (w - sw) >> 1; sy = (h - sh) >> 1; }
+  const scale = Math.min(1, 1100 / sw);
+  canvas.width = Math.round(sw * scale); canvas.height = Math.round(sh * scale);
+  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  const Z = zx.Z;
+  const lum = new Z.HTMLCanvasElementLuminanceSource(canvas);
+  zx.flip ^= 1;  // alternate binarizers: hybrid (normal) / global histogram (dim, low contrast)
+  const bin = zx.flip ? new Z.HybridBinarizer(lum) : new Z.GlobalHistogramBinarizer(lum);
+  try { return [zx.reader.decodeWithState(new Z.BinaryBitmap(bin)).getText()]; }
+  catch (e) { return []; }
+}
+async function decodeFrame() {
+  if (engine === "native") { const r = await detector.detect(video); return r.map(x => x.rawValue); }
+  return zxDecodeSource(video, video.videoWidth, video.videoHeight, true);
+}
+const rvfc = "requestVideoFrameCallback" in HTMLVideoElement.prototype;
+let busy = false;
+function schedule() { if (!running) return; rvfc ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); }
+async function tick() {
+  if (!running) return;
+  if (!busy && video.readyState >= 2 && video.videoWidth) {
+    busy = true; const t0 = performance.now();
+    let codes = [];
+    try { codes = await decodeFrame(); } catch (e) {}
+    const ms = performance.now() - t0;
+    busy = false;
+    for (const c of codes) accept(c, "cam", ms);
+  }
+  schedule();
+}
+
+async function startCam() {
+  audio();
+  const msg = $("startMsg");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return camFail("هذا المتصفح ما يسمح بالكاميرا هنا.");
+  msg.textContent = "جاري تشغيل الكاميرا…";
+  try {
+    if (engine === "–") await pickEngine();
+  } catch (e) { return camFail("ما گدرنا نحمّل محرك القراءة. تأكد من الإنترنت وعيد المحاولة."); }
+  const h = S.res === "720" ? 720 : 1080;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: facing }, width: { ideal: h * 16 / 9 }, height: { ideal: h }, frameRate: { ideal: 30 } } });
+  } catch (e) {
+    return camFail(e && e.name === "NotAllowedError" ? "الكاميرا مرفوضة بهاي الصفحة. استخدم «صوّر باركود» أو قارئ بلوتوث، أو افتح رابط القارئ المنشور." : "ما گدرنا نفتح الكاميرا. جرّب «صوّر باركود» أو قارئ بلوتوث.");
+  }
+  video.srcObject = stream;
+  try { await video.play(); } catch (e) {}
+  track = stream.getVideoTracks()[0];
+  try {
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    const adv = [];
+    if (caps.focusMode && caps.focusMode.includes("continuous")) adv.push({ focusMode: "continuous" });
+    if (caps.exposureMode && caps.exposureMode.includes("continuous")) adv.push({ exposureMode: "continuous" });
+    if (adv.length) await track.applyConstraints({ advanced: adv });
+    $("torchBtn").hidden = !caps.torch;
+    zoomCaps = caps.zoom && caps.zoom.max > 1 ? caps.zoom : null; $("zoomBtn").hidden = !zoomCaps;
+    zoomLevel = 1; $("zoomLbl").textContent = "1x";
+  } catch (e) {}
+  $("start").hidden = true; $("cam").classList.remove("paused");
+  running = true; wake(); schedule();
+}
+function camFail(text) {
+  $("startMsg").textContent = text; $("start").hidden = false;
+  $("startBtn").textContent = "إعادة المحاولة";
+}
+function stopCam() {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; track = null; torchOn = false; $("torchBtn").classList.remove("on");
+}
+$("startBtn").addEventListener("click", startCam);
+$("pauseBtn").addEventListener("click", () => {
+  if (running) { stopCam(); $("cam").classList.add("paused"); $("start").hidden = false; $("startBtn").textContent = "استئناف المسح"; $("startMsg").textContent = "المسح موقوف مؤقتاً."; }
+});
+$("flipBtn").addEventListener("click", async () => { facing = facing === "environment" ? "user" : "environment"; if (running) { stopCam(); await startCam(); } });
+$("torchBtn").addEventListener("click", async () => {
+  if (!track) return; torchOn = !torchOn;
+  try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); $("torchBtn").classList.toggle("on", torchOn); } catch (e) { torchOn = false; }
+});
+$("zoomBtn").addEventListener("click", async () => {
+  if (!track || !zoomCaps) return;
+  const steps = [1, 1.5, 2, 3].filter(z => z <= zoomCaps.max);
+  zoomLevel = steps[(steps.indexOf(zoomLevel) + 1) % steps.length] || 1;
+  try { await track.applyConstraints({ advanced: [{ zoom: zoomLevel }] }); $("zoomLbl").textContent = zoomLevel + "x"; } catch (e) {}
+});
+let wl = null;
+async function wake() { try { if ("wakeLock" in navigator) wl = await navigator.wakeLock.request("screen"); } catch (e) {} }
+document.addEventListener("visibilitychange", () => { if (!document.hidden && running) wake(); });
+
+/* photo fallback (works where live video is blocked) */
+$("photoBtn").addEventListener("click", () => { audio(); $("photoInput").click(); });
+$("photoInput").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  const t0 = performance.now();
+  try {
+    if (engine === "–") await pickEngine();
+    const bmp = await createImageBitmap(f);
+    let codes = [];
+    if (engine === "native") codes = (await detector.detect(bmp)).map(x => x.rawValue);
+    else { codes = zxDecodeSource(bmp, bmp.width, bmp.height, false); if (!codes.length) codes = zxDecodeSource(bmp, bmp.width, bmp.height, false); }
+    if (!codes.length) { showLast("—", "bad", "ما انقرأ", "قرّب الباركود وخلي الصورة واضحة"); feedback("bad"); return; }
+    for (const c of codes) accept(c, "photo", performance.now() - t0);
+  } catch (err) { showLast("—", "bad", "ما انقرأ", "صار خطأ بقراءة الصورة"); feedback("bad"); }
+});
+
+/* hardware (Bluetooth / USB) scanners type fast and end with Enter */
+$("hwBtn").addEventListener("click", () => { audio(); $("manual").focus(); toast("جاهز لقارئ البلوتوث"); });
+$("entry").addEventListener("submit", e => {
+  e.preventDefault(); audio();
+  const v = $("manual").value; $("manual").value = "";
+  const fast = kb.len >= 4 && kb.span / Math.max(1, kb.len - 1) < 35;
+  kb.len = 0;
+  if (v.trim()) accept(v, fast ? "hw" : "manual", 0);
+});
+const kb = { first: 0, last: 0, len: 0, span: 0, buf: "" };
+$("manual").addEventListener("keydown", e => {
+  const t = performance.now();
+  if (e.key.length === 1) { if (!kb.len || t - kb.last > 120) { kb.first = t; kb.len = 0; } kb.len++; kb.last = t; kb.span = t - kb.first; }
+});
+document.addEventListener("keydown", e => {   // scans arriving while nothing is focused
+  const tag = (document.activeElement && document.activeElement.tagName) || "";
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || document.querySelector("dialog[open]")) return;
+  const t = performance.now();
+  if (e.key === "Enter") { if (kb.buf.length >= 3 && t - kb.last < 100) { audio(); accept(kb.buf, "hw", 0); } kb.buf = ""; return; }
+  if (e.key.length !== 1) return;
+  if (t - kb.last > 80) kb.buf = "";
+  kb.buf += e.key; kb.last = t;
+});
+
+/* ---------- export ---------- */
+function rowsFor(all) {
+  const out = [];
+  const list = all ? [...index.values()].sort((a, b) => a.t - b.t) : bySess.get(cur.id);
+  const name = id => (sessions.find(s => s.id === id) || {}).name || "";
+  const srcAr = { cam: "كاميرا", hw: "قارئ", manual: "يدوي", photo: "صورة" };
+  list.forEach((r, i) => { const o = r.info || findOrder(r.code) || {}; out.push([i + 1, r.code, o.gov || "", o.addr || "", o.price != null ? o.price : "", o.page || "", fmtDate(r.t), fmtTime(r.t), name(r.session), srcAr[r.src] || r.src, "مستلم بالمخزن"]); });
+  return out;
+}
+const HEAD = ["#", "رقم الطلب", "المحافظة", "العنوان", "السعر", "اسم البيج", "التاريخ", "الوقت", "الدفعة", "طريقة القراءة", "الحالة"];
+async function saveFile(filename, data, mime) {
+  const blob = data instanceof Blob ? data : new Blob([data], { type: mime });
+  if (window.claude && window.claude.use) {
+    try { const d = await window.claude.use("downloads"); if (d) { await d.save({ filename, data: blob }); return; } } catch (e) { if (e && e.code && e.code !== "unavailable") return; }
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+const fileBase = () => "استلام-الفهود-" + cur.name.replace(/[\\/:*?"<>|\s]+/g, "-");
+$("csvBtn").addEventListener("click", () => {
+  flush();
+  const esc = v => { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  // codes as ="123" so Excel keeps leading zeros and long numbers intact
+  const lines = [HEAD.join(",")].concat(rowsFor(false).map(r => r.map((v, i) => i === 1 ? '="' + String(v).replace(/"/g, '""') + '"' : esc(v)).join(",")));
+  saveFile(fileBase() + ".csv", "﻿" + lines.join("\r\n"), "text/csv;charset=utf-8");
+});
+function loadXLSX() {
+  return new Promise((res, rej) => {
+    if (window.XLSX) return res(window.XLSX);
+    const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload = () => res(window.XLSX); s.onerror = rej; document.head.append(s);
+  });
+}
+$("xlsxBtn").addEventListener("click", async () => {
+  flush();
+  const b = $("xlsxBtn"); const old = b.innerHTML; b.textContent = "جاري التجهيز…";
+  try {
+    const X = await loadXLSX();
+    const ws = X.utils.aoa_to_sheet([HEAD, ...rowsFor(false)]);
+    for (let r = 1; r <= bySess.get(cur.id).length; r++) { const c = ws[X.utils.encode_cell({ r, c: 1 })]; if (c) { c.t = "s"; c.z = "@"; } }
+    ws["!cols"] = [{ wch: 6 }, { wch: 18 }, { wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 24 }, { wch: 12 }, { wch: 16 }];
+    const wb = X.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] };
+    X.utils.book_append_sheet(wb, ws, "الاستلام");
+    const out = X.write(wb, { bookType: "xlsx", type: "array" });
+    await saveFile(fileBase() + ".xlsx", new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  } catch (e) { toast("ما گدرنا نجهز ملف Excel، استخدم CSV"); }
+  b.innerHTML = old;
+});
+
+/* ---------- sessions & settings sheets ---------- */
+document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => b.closest("dialog").close()));
+function renderSessions() {
+  const box = $("sessList"); box.textContent = "";
+  for (const s of sessions) {
+    const n = (bySess.get(s.id) || []).length;
+    const el = document.createElement("div"); el.className = "sess" + (s === cur ? " cur" : "");
+    el.innerHTML = '<div><b></b><span></span></div><button class="ghost">فتح</button>';
+    el.querySelector("b").textContent = s.name;
+    el.querySelector("span").textContent = nf(n) + " شحنة · " + fmtDate(s.created) + " " + fmtTime(s.created);
+    const btn = el.querySelector("button");
+    if (s === cur) { btn.textContent = "الحالية"; btn.disabled = true; }
+    btn.addEventListener("click", () => { setSession(s); $("sessDlg").close(); });
+    box.append(el);
+  }
+}
+$("sessBtn").addEventListener("click", () => { renderSessions(); $("sessDlg").showModal(); });
+$("newSessBtn").addEventListener("click", () => { setSession(newSession()); $("sessDlg").close(); toast("بدأت دفعة جديدة"); });
+
+$("setBtn").addEventListener("click", () => {
+  $("sBeep").checked = S.beep; $("sVib").checked = S.vib; $("sMin").value = S.min; $("sPat").value = S.pat;
+  $("sDbl").checked = dblOn(); $("sCool").value = S.cool; $("sRes").value = S.res;
+  $("setDlg").showModal();
+});
+$("sBeep").onchange = e => { S.beep = e.target.checked; saveS(); if (S.beep) { audio(); feedback("ok"); } };
+$("sVib").onchange = e => { S.vib = e.target.checked; saveS(); };
+$("sMin").onchange = e => { S.min = Math.max(1, +e.target.value || 1); saveS(); };
+$("sPat").onchange = e => { S.pat = e.target.value.trim(); compilePat(); saveS(); if (S.pat && !patRe) toast("النمط غير صحيح"); };
+$("sDbl").onchange = e => { S.dbl = e.target.checked; saveS(); };
+$("sCool").onchange = e => { S.cool = Math.max(0.5, +e.target.value || 2); saveS(); };
+$("sRes").onchange = async e => { S.res = e.target.value; saveS(); if (running) { stopCam(); await startCam(); } };
+$("wipeBtn").addEventListener("click", async e => {
+  const b = e.currentTarget;
+  if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "متأكد؟ اضغط مرة ثانية"; setTimeout(() => { delete b.dataset.armed; b.textContent = "حذف الكل"; }, 3000); return; }
+  delete b.dataset.armed; b.textContent = "حذف الكل";
+  index.clear(); bySess.clear(); sessions = []; queue.length = 0; delQueue.length = 0;
+  if (idb) { try { const tx = idb.transaction(["scans", "sessions"], "readwrite"); tx.objectStore("scans").clear(); tx.objectStore("sessions").clear(); } catch (err) {}
+    try { idb.transaction("orders", "readwrite").objectStore("orders").clear(); } catch (err) {} }
+  orders.clear(); ordersMeta = null; catStatus();
+  setSession(newSession()); $("setDlg").close(); toast("انحذفت كل البيانات");
+});
+
+/* ---------- boot ---------- */
+(async () => {
+  const t0 = performance.now();
+  idb = await openDB();
+  if (idb) {
+    const [ss, scans, ords] = await Promise.all([getAll("sessions"), getAll("scans"), getAll("orders")]);
+    for (const o of ords) orders.set(o.code, o);
+    try { ordersMeta = JSON.parse(localStorage.getItem("fh.ordersMeta") || "null"); } catch (e) {}
+    sessions = ss.sort((a, b) => b.created - a.created);
+    for (const s of sessions) bySess.set(s.id, []);
+    scans.sort((a, b) => a.t - b.t);
+    for (const r of scans) { index.set(r.code, r); if (!bySess.has(r.session)) bySess.set(r.session, []); bySess.get(r.session).push(r); }
+    try { persistent = navigator.storage && navigator.storage.persist ? await navigator.storage.persist() : false; } catch (e) {}
+  } else {
+    warn("هذا العرض ما يسمح بالحفظ الدائم على الجهاز. صدّر الملف قبل ما تسكر الصفحة.");
+  }
+  let id = null; try { id = localStorage.getItem("fh.cur"); } catch (e) {}
+  const s = sessions.find(x => x.id === id) || sessions[0] || newSession();
+  setSession(s); catStatus();
+  $("engine").textContent = ("BarcodeDetector" in window ? "Native" : "ZXing") + " · تحميل " + nf(index.size) + " سجل بـ " + Math.round(performance.now() - t0) + "ms";
+  if (!isSecureContext) warn("الكاميرا تحتاج رابط https.");
+})();
+})();
+</script>
+
+</body></html>
